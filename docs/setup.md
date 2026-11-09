@@ -4,27 +4,29 @@ Install **Thor Monitor** on your Thor and **Thor Companion** on your phone.
 
 ## 1. Set up your Thor
 
-Open Thor Monitor and follow the setup screens:
+Open Thor Monitor and follow the setup screens.
 
-- Choose a color. You can change it later in Appearance.
-- Allow **Nearby devices**, **notifications**, and **unrestricted battery use**.
-- Enable **Start after restart** if you want monitoring to resume automatically.
-- Choose any optional features, then **start monitoring**.
+### Choose your color
 
-<table>
-<tr><th>Choose your color</th><th>Allow background monitoring</th></tr>
-<tr><td><img src="assets/onboarding/step-1.png" alt="Host onboarding: choose a theme and icon" width="340"></td><td><img src="assets/onboarding/step-3.png" alt="Host onboarding: notifications and background access" width="340"></td></tr>
-<tr><th>Choose optional features</th><th>Connect your phone</th></tr>
-<tr><td><img src="assets/onboarding/step-5.png" alt="Host onboarding: Wi-Fi, Find my Thor, keyboard and battery saving" width="340"></td><td><img src="assets/onboarding/step-6.png" alt="Host onboarding: open the companion, connect and confirm pairing" width="340"></td></tr>
-</table>
+Pick a theme and icon to match your Thor. You can change these later in Appearance.
 
-*The setup screens on your Thor.*
+<img src="assets/onboarding/step-1.png" alt="Choose a color in Thor Monitor setup" width="420">
+
+### Allow Bluetooth and background monitoring
+
+Allow **Nearby devices**, **notifications**, and **unrestricted battery use**. Enable **Start after restart** if you want monitoring to resume automatically.
+
+<img src="assets/onboarding/step-3.png" alt="Allow notifications and background access in Thor Monitor setup" width="420">
+
+Continue through advanced controls and optional features, then **start monitoring**.
 
 ## 2. Connect your phone
 
 1. Keep the Thor open and unlocked.
 2. Open Thor Companion and allow Bluetooth access.
 3. Find your Thor, tap **Connect**, and confirm pairing on both devices.
+
+<img src="assets/onboarding/step-6.png" alt="Connect your phone and confirm Bluetooth pairing" width="420">
 
 The app remembers your Thor and reconnects automatically. **Disconnect** pauses this until you tap **Reconnect**.
 
@@ -41,6 +43,10 @@ For fan, performance and power controls, pair Thor Monitor with Android’s wire
 After restarting, unlock the Thor once. Controls reconnect when Wi-Fi and wireless debugging are available. Android may ask you to approve a new network.
 
 ## Optional features
+
+Choose these during setup, or return to them in the host settings later.
+
+<img src="assets/onboarding/step-5.png" alt="Optional Wi-Fi, Find my Thor, keyboard and battery saving setup" width="420">
 
 | Feature | Setup |
 | --- | --- |
