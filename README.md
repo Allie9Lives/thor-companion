@@ -13,7 +13,7 @@ Install **Thor Monitor** on the Thor and **Thor Companion** on your phone.
 | Thor Companion **0.14.0** | Android phone | [Android APK](https://github.com/Allie9Lives/thor-companion/releases/download/v0.14.3/Thor-Companion-Android-0.14.0.apk) |
 | Thor Companion **0.14.0** | iPhone | [Development IPA](https://github.com/Allie9Lives/thor-companion/releases/download/v0.14.3/Thor-Companion-iOS-0.14.0-development.ipa) |
 
-These are development builds. The iPhone IPA requires valid provisioning or re-signing; it is not an App Store or TestFlight install. [All release files, checksums →](https://github.com/Allie9Lives/thor-companion/releases/latest)
+These are development builds. The iPhone IPA requires valid provisioning or re-signing; it is not an App Store or TestFlight install. [All release files, source archives and checksums →](https://github.com/Allie9Lives/thor-companion/releases/latest)
 
 ## What it does
 
@@ -43,4 +43,4 @@ Choose **Light**, **Dark**, **Clear Purple**, or **Rainbow** on both apps.
 
 For overnight saving, add your Wi-Fi in **Settings → Monitoring → Battery saving**. Existing Tailscale settings are left alone.
 
-[Full setup guide](docs/setup.md) · [Sound credits](docs/sound-credits.md)
+[Full setup guide](docs/setup.md) · [Build from source](BUILDING.md) · [Sound credits](docs/sound-credits.md)
