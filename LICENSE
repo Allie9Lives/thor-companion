@@ -1,0 +1,104 @@
+Thor Companion Source-Available License 1.0
+Effective date: November 9, 2026
+
+Copyright (c) 2026 Allie9Lives. All rights reserved.
+
+1. Scope
+
+This license covers the original Thor Companion and Thor Monitor code,
+binaries, documentation and artwork owned by Allie9Lives (the "Licensor"),
+collectively the "Software". It is a proprietary, source-available license,
+not the GNU GPL or an open-source license. Third-party material is governed
+by Section 5 instead.
+
+2. Permissions
+
+Subject to this license, you may, without a fee:
+
+(a) download, install and run official, unmodified builds on devices you own
+    or are authorized to manage;
+(b) read, inspect and make private local copies of the source for study or
+    security review;
+(c) compile the unmodified source, sign or re-sign it with your own identity,
+    and install the resulting build for your own use; and
+(d) keep reasonable private backup copies and report issues or suspected
+    vulnerabilities to the Licensor.
+
+Changes strictly necessary to configure your local toolchain, application
+identifiers, provisioning or signing are allowed under (c), provided they do
+not change the Software's behavior. Preserve copyright, license and
+third-party notices. These permissions do not authorize redistribution.
+
+3. Prior written approval
+
+Except as permitted by Sections 2, 5 and 6, you must obtain the Licensor's
+prior written permission before:
+
+(a) modifying the Software or creating derivative works; or
+(b) distributing, publishing, mirroring, sharing or making available any
+    source, binary, modified build or derivative work to another person.
+
+Permission must identify the approved changes or materials, permitted
+recipients or distribution channel, and any conditions. Silence, repository
+access, a bug report, or approval of a different version is not permission.
+Request approval through the official Allie9Lives/thor-companion GitHub
+repository or directly from the Allie9Lives account. If approval is granted,
+you may act only within its stated scope. Linking to an official download
+page, without hosting or transferring a copy, does not require approval.
+
+4. No sale or paid distribution
+
+You may not sell, rent, sublicense for a fee, put behind a paywall, or charge
+for copies of or access to the Software, including modified versions. You
+may not include it in a paid software bundle or charge a download,
+activation or license fee. Approval to modify or redistribute under Section
+3 does not waive this restriction. Merely using the Software in your work
+does not constitute selling it.
+
+5. Third-party rights and library replacement
+
+This license does not replace or limit the licenses of dependencies,
+frameworks, libraries, fonts, sounds or other third-party material. Their
+copyright notices, attribution requirements and license terms continue to
+apply, including any rights to modify, redistribute or charge for those
+components separately. Consult the bundled notices, third_party directory
+and sound credits.
+
+In particular, Thor Monitor uses SPAKE2 Java / Android under the GNU LGPL
+version 3 or later. Notwithstanding Sections 2 through 4 or any other term
+here, you may modify or replace LGPL-covered portions, use the supplied
+application code to recombine or relink the application with a modified
+version of the LGPL library, and install and run the resulting combined work.
+You may reverse engineer the combined work for debugging such library
+modifications. No approval is required for those activities or for any
+further rights that the applicable LGPL requires. This exception does not
+otherwise grant rights in the Licensor's original code. If a third-party
+license requires a conflicting permission, that permission prevails to the
+extent required for compliance.
+
+6. Other preserved rights
+
+Nothing here limits rights that cannot lawfully be restricted, fair use or
+other statutory exceptions, or rights necessarily granted under GitHub's
+Terms of Service for a repository hosted there. Those platform rights do
+not create a general permission to distribute the Software elsewhere.
+This license does not revoke permissions validly granted under an earlier
+license. No trademark right or endorsement is granted.
+
+7. Termination
+
+The permissions granted by this license end if you violate its terms. Upon
+termination, stop using and distributing the Licensor's covered Software
+and delete copies held under this license, unless applicable law permits
+otherwise. Independent third-party rights are unaffected. Reinstatement
+requires the Licensor's written permission.
+
+8. Disclaimer and liability
+
+TO THE EXTENT PERMITTED BY APPLICABLE LAW, THE SOFTWARE IS PROVIDED "AS IS",
+WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE AND
+NONINFRINGEMENT. THE LICENSOR IS NOT LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY ARISING FROM THE SOFTWARE OR ITS USE, WHETHER IN CONTRACT, TORT
+OR OTHERWISE. NOTHING IN THIS LICENSE EXCLUDES LIABILITY OR CONSUMER RIGHTS
+THAT APPLICABLE LAW DOES NOT ALLOW TO BE EXCLUDED.

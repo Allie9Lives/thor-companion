@@ -44,3 +44,7 @@ Choose **Light**, **Dark**, **Clear Purple**, or **Rainbow** on both apps.
 For overnight saving, add your Wi-Fi in **Settings → Monitoring → Battery saving**. Existing Tailscale settings are left alone.
 
 [Full setup guide](docs/setup.md) · [Build from source](BUILDING.md) · [Sound credits](docs/sound-credits.md)
+
+## License
+
+Free to use; source available for inspection. Modifying or redistributing the app requires prior written approval from Allie9Lives. Selling copies or charging for access is prohibited. Third-party licenses and required library-replacement rights still apply. See [LICENSE](LICENSE) for the full terms.
