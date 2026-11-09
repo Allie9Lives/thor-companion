@@ -1,14 +1,16 @@
-# Thor Monitor and Thor Companion — setup guide (host 0.14.3 / client 0.14.0)
+# Setup guide
 
-Thor Monitor runs on the AYN Thor. Thor Companion runs on your phone. They communicate over paired Bluetooth; an internet connection or account is not required. Advanced controls use an additional, on-device setup described below.
+Install **Thor Monitor** on your Thor and **Thor Companion** on your phone.
 
-After setup, the host opens to Overview with its own live readings. Open Battery insights for locally recorded battery graphs and diagnostics; a phone connection is not required for these pages. Use the gear to open Host settings for monitoring, permissions, appearance, files and Recovery setup. The companion remains the place for remote device controls.
+## 1. Set up your Thor
 
-Settings sections expand when tapped. Battery saving is under **Monitoring**; wireless-debugging setup is under **Controls recovery → Recovery setup**. **Review setup** reopens the six-step guide with icons and progress, keeping your existing permissions, pairing and choices.
+Open Thor Monitor and follow the six setup steps:
 
-## Setup at a glance
-
-The host guides you through six steps. These example screens show the main choices; your permission status may differ.
+- Choose a color. You can change it later in Appearance.
+- Allow **Nearby devices**, **notifications**, and **unrestricted battery use**.
+- Enable **Start after restart** if you want monitoring to resume automatically.
+- Set up advanced controls below, or skip them for now.
+- Choose any optional features, then **start monitoring**.
 
 <table>
 <tr><th>Choose your color</th><th>Allow background monitoring</th></tr>
@@ -17,84 +19,50 @@ The host guides you through six steps. These example screens show the main choic
 <tr><td><img src="assets/onboarding/step-5.png" alt="Host onboarding: Wi-Fi, Find my Thor, keyboard and battery saving" width="340"></td><td><img src="assets/onboarding/step-6.png" alt="Host onboarding: open the companion, connect and confirm pairing" width="340"></td></tr>
 </table>
 
-Allow Nearby devices on the Bluetooth step. Complete Controls recovery if you want advanced controls. You can return to any step using **gear → Review setup**.
+*Example onboarding screens. Your permission status may differ.*
 
-## Connect a phone
+## 2. Connect your phone
 
-1. Open Thor Monitor on the Thor and follow its setup screens. Choose your Thor color for a matching theme and launcher icon, or continue with the default. You can change it in Appearance later. Then allow Nearby devices and enable Bluetooth.
-2. Allow notifications so monitoring status and Find my Thor's Stop action can appear. Allow unrestricted background battery use when offered.
-3. Choose **Start after restart** as desired. CPU keep-alive defaults to the Overnight policy described below. Keeping the CPU awake uses additional battery; pausing it may delay updates and remote commands.
-4. Start monitoring. Open Thor Companion on your phone, allow Bluetooth access, scan and connect to your Thor. Confirm any system pairing prompts on both devices. Keep the Thor open and unlocked for this first connection.
+1. Keep the Thor open and unlocked.
+2. Open Thor Companion and allow Bluetooth access.
+3. Find your Thor, tap **Connect**, and confirm pairing on both devices.
 
-The phone remembers the selected Thor and can reconnect automatically. Disconnect deliberately pauses reconnection; Reconnect resumes it. Forget Thor removes the app's saved selection, not the operating system's Bluetooth bond. Use system Bluetooth settings only if a new pairing is actually necessary.
+The app remembers your Thor and reconnects automatically. **Disconnect** pauses this until you tap **Reconnect**.
 
-## Automatic Bluetooth and network connection
+## 3. Enable advanced controls
 
-Enable **Wi-Fi access** in the host's settings. On the phone, allow Local Network access when requested. With an authenticated Bluetooth connection, the companion can obtain the Thor's pinned network identity and current addresses automatically. In **Connection health**, Automatic connection is enabled by default and can be turned off; the page shows the selected route, live Bluetooth signal and response measurements. An existing VPN address can also be selected there.
+Required for fan, performance, power and other advanced controls. Complete this on the Thor; no computer is needed.
 
-The companion verifies the actual encrypted network endpoints before switching. Weak Bluetooth, repeated failures or consistently better network response can select Wi-Fi/VPN. Bluetooth stays connected as a fallback; restricted/public Wi-Fi can simply remain unusable while Bluetooth carries controls. Files and screenshots continue to require a network route. This does not change Wi-Fi configuration, router settings or Tailscale. Foreground use supports network handoff; iPhone background monitoring continues to rely on Bluetooth and iOS scheduling.
+1. Connect to trusted Wi-Fi. In Android Settings, tap **Build number** seven times to enable Developer options if needed.
+2. In Thor Monitor, open **gear → Controls recovery → Recovery setup → Open wireless debugging**. Enable it and approve the network prompt.
+3. In Android's Wireless debugging page, choose **Pair device with pairing code**. Keep that window open.
+4. Enter its **pairing port** and six-digit code in Thor Monitor, then tap **Pair**. Use the port shown beside the code, not the ordinary connection port.
+5. Enable automatic controls recovery and wait for **Advanced controls ready**.
 
-## Overnight battery saving and morning restore
+After a restart, unlock the Thor once. Recovery resumes when trusted Wi-Fi and wireless debugging are available. A different network may require approval again.
 
-Open **Thor Monitor → gear → Monitoring → Battery saving**. The default window is 21:00–06:00 in the Thor's local timezone, with a three-hour continuous screens-off delay. Select **Trust current Wi-Fi**, review its name and confirm it. No saved network is trusted automatically. Identifying the network uses the advanced helper; if the network identity cannot be checked, overnight saving stays off. Other networks retain CPU keep-alive. Configure automatic recovery first if the helper is unavailable.
+## Optional features
 
-**Pause after screens off** lets you change the default three hours using presets or a custom 1–1440-minute delay. **Keep awake while plugged in** is optional and off by default. Enabling it skips automatic Overnight/Passive pauses on external power, including at full charge. On unplug, the existing screens-off timer and schedule apply again; if the delay already elapsed, the Thor can pause immediately. Manual Stop and Allow deep sleep still take precedence.
+| Feature | Setup |
+| --- | --- |
+| Wi-Fi controls, files and screenshots | Enable **Wi-Fi access** on the Thor. Allow **Local Network** on iPhone. Link access over Bluetooth when prompted. For files, select folders or allow full shared-storage access on the Thor. Existing Tailscale settings stay unchanged. |
+| Phone keyboard | Follow **Phone keyboard** setup on the Thor. |
+| Find my Thor | Allow **Stop panel over apps** on the Thor to dismiss the sound over any app. |
+| Battery alerts | On your phone, open **gear → Battery notifications**, enable your alerts and send a test. Alerts need incoming readings; they won't arrive after force-quitting the iPhone app. |
+| Battery widgets | Add **Thor Battery** from your iPhone's Home or Lock Screen widget picker. For more frequent updates, enable **Live battery** in the app. |
+| Battery history | Open **Battery insights** below the battery card. History builds as monitoring runs. |
 
-Allow **Alarms & reminders** for precise morning restoration. The local alarm restores CPU keep-alive without needing the phone and leaves both screens off. Without exact-alarm access Android may delay restoration. Manual Stop stays stopped; this does not power on a shut-down device. The companion's Battery saving card can change the restore time while connected. Changing the restore time also changes the end of the overnight window.
+## Overnight battery saving
 
-**Always on · not recommended** retains the old continuous wake lock. **Passive** permits sleep at any time. **Allow deep sleep** in the companion releases this app's CPU lock and sleeps the screens until the local restore, normal use or a successful Wake screens command. Android and other apps decide whether the device actually sleeps; remote wake is not guaranteed while the CPU/radios cannot deliver requests. Battery graphs shade recorded keep-alive pauses rather than inventing battery samples or claiming continuous confirmed deep sleep.
+On the Thor, open **gear → Monitoring → Battery saving** and add your trusted Wi-Fi.
 
-## Set up advanced controls and automatic recovery
+The default pauses CPU keep-alive after **3 hours with screens off**, between **9 PM and 6 AM**. Change the delay or restore time there, and optionally enable **Keep awake while plugged in**. Allow **Alarms & reminders** for an on-time morning restore with the screens left off.
 
-This is separate from Bluetooth phone pairing. It pairs Thor Monitor with Android's own debugging service **on the same Thor**. No computer or root is required for the normal setup tested on the supported Thor firmware.
+## Need help?
 
-1. Connect the Thor to a trusted Wi-Fi network. Enable Developer options in Android settings if needed by tapping Build number seven times and entering your device PIN when asked.
-2. Open **Recovery setup** in Thor Monitor, then **Open wireless debugging**. Enable Wireless debugging. If Android asks whether to allow debugging on this network, approve your trusted network; use Always allow if appropriate.
-3. Select **Pair device with pairing code** in Android's Wireless debugging page. Leave that system pairing window open. Thor Monitor opens the settings page on the other screen when available.
-4. Enter the displayed **pairing port** and six-digit code in Thor Monitor. Use the port in the pairing-code window, which differs from the ordinary connection port. Codes expire; generate a fresh code if pairing fails.
-5. Pair, enable automatic controls recovery, and wait for **Advanced controls ready**. The app completes the one-time permission step itself through that local pairing. Use Retry now after approving a network prompt if necessary.
+- **No readings:** Open Thor Monitor, start monitoring, then reconnect from the phone.
+- **Controls unavailable:** Open Recovery setup and retry; check for a wireless-debugging approval prompt.
+- **Screenshots or files won't connect:** Check Wi-Fi access and network reachability. Screenshots also need advanced controls and an open, unlocked Thor.
+- **Review permissions:** Use **gear → Review setup** on the Thor.
 
-After a restart, unlock the Thor once. When monitoring and Start after restart remain enabled, monitoring resumes; when trusted Wi-Fi/debugging becomes available, the app restores advanced controls. The saved local pairing and permission normally survive restarts and app updates. A computer does not perform that recovery.
-
-Android can still require a new approval on a different network, after debugging authorizations are revoked, or after reinstalling the host. If monitoring was deliberately stopped, restart it on the Thor. A force-stopped app cannot override Android's force-stop restriction. Bluetooth-only monitoring can work while advanced controls await recovery. Do not expect the phone to wake a completely shut-down Thor or start a stopped host remotely.
-
-Wireless debugging is a powerful developer feature. Use a trusted network and keep the paired devices list under your control. Disabling it disables automatic restoration of the advanced helper until setup is available again.
-
-## New controls
-
-- **Find my Thor:** Controls → Find my Thor. The Tranquility locator sound starts gently, ramps over 10 seconds, and stops after 60 seconds. Stop it from the phone or tap its Thor notification. Optionally allow **Stop panel over apps** in the host’s Find my Thor section for a single Stop button over other apps; normal Stop gently fades the sound. It temporarily raises the alarm stream to maximum and restores its prior level afterward; it does not permanently change either screen's media volume. Requires a working connection and running host; this is a nearby locator, not GPS tracking.
-- **Live sliders:** While Controls is open, manually changed Thor settings are read about once a second. Brightness and volume changes are sent during a drag with throttling; the final value is sent on release. Sync switches link both screen sliders.
-- **Power:** Controls → Device Power offers Sleep screens, Restart and Shut down. Restart and shutdown ask for confirmation because they close running apps. Advanced controls must be ready. Sleeping a screen does not shut down the device; shutdown cannot be undone remotely over this Bluetooth connection.
-- **Keyboard and screenshots:** Optional Phone keyboard setup is on the Thor. Screenshots require Wi-Fi and linked network access (open Screenshots → link over Bluetooth once → Check Wi-Fi), plus ready advanced controls and an open, unlocked Thor. They can capture top, bottom or both; both are stitched on the phone and saved to its Photos library. Screenshot images are held temporarily in Thor RAM, not stored as image files there.
-
-## Battery notifications and history
-
-In the phone's settings, open **Battery notifications**, enable them and grant notification access. Each alert can be selected separately: low battery at 20%, low battery at 10%, reaching 80% while connected to power, plugged in and unplugged. Use Send test notification to verify permission. Alerts describe newly observed changes; old history is not replayed as notifications. Threshold hysteresis prevents repeated alerts around a boundary.
-
-Notifications require incoming Thor readings. Bluetooth range, passive host sleep, phone suspension, force-quit, notification settings and Focus modes can delay delivery. This version does not use a cloud/push service to notify an unreachable phone.
-
-Open **Battery insights** below the Overview battery card or from settings. It offers Last 24 hours and Last 7 days. Thor Monitor records approximately every five minutes plus observed power/screen-state changes while running, retaining seven days. History sync can fill phone connection gaps from the Thor's log. Gaps where the host itself did not record remain blank. The graph starts sparse after installation; only available earlier diagnostic samples can be imported.
-
-Battery insights includes observed battery drain by hour, sampled screen-on time, time connected to power, temperature, voltage, current, remaining charge and available controller-reported full/design capacity and cycles. It does not claim per-app energy usage, exact screen-on session tracking or an iPhone-style calibrated maximum-capacity percentage. Controller capacities are raw firmware reports and can exceed the design figure.
-
-## Lock Screen
-
-The compact Thor Battery widget is an iOS-managed snapshot and may refresh less often than readings. Its time is As of. Optional Live battery in the phone's settings provides a Live Activity for more frequent incoming updates. Both show last-known data when fresh readings are unavailable.
-
-## Data and distribution
-
-There are no accounts or cloud telemetry. Battery history stays in the Thor's private database and a local phone cache. Pairing identities stay private on the Thor. Notifications are local to the phone. The current downloadable iPhone build is a signed development build, not an App Store release; public distribution needs production signing and store review. Advanced controls have been tested on the development Thor firmware, not every Thor revision.
-
-## Wi-Fi files and activity alerts
-
-Enable Wi-Fi access on the host, then link file access over Bluetooth in the phone's Files page. Allow Local Network access on iPhone. Choose folders on the Thor, or enable its optional full shared-storage permission to browse internal storage and microSD. Use the phone's Files picker to upload or save downloads. Existing Tailscale settings stay unchanged.
-
-Focused apps and lid state appear in Performance. Enable optional closed-lid activity alerts separately under Battery notifications. Notification titles use your Thor's configured name. See [sound credits](sound-credits.md) for the included audio.
-
-## Home Screen battery widget
-
-On iPhone, long-press the Home Screen → Edit → Add Widget → search Thor → choose Thor Battery. The ring and percentage use the latest received reading, with a plug while actively charging. iOS controls widget refresh timing.
-
-## Appearance and Find my Thor
-
-Choose Light, Dark, Clear Purple or Rainbow in Appearance. On the host, Thor color also chooses a matching launcher icon. Find my Thor opens an animated Stop panel over a blurred background when overlay permission is allowed.
+[Back to downloads](../README.md) · [Sound credits](sound-credits.md)
