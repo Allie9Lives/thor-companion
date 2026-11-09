@@ -11,11 +11,11 @@
     </g>
   </g>
 
-  <text x="600" y="119" text-anchor="middle" fill="#F5EFFB" font-family="system-ui,Segoe UI,Arial,sans-serif" font-size="72" font-weight="700" letter-spacing="-1.8">Thor Companion</text>
-  <text x="600" y="165" text-anchor="middle" fill="#C5B9D3" font-family="system-ui,Segoe UI,Arial,sans-serif" font-size="28">Your Thor, on your phone.</text>
+  <text x="600" y="84" text-anchor="middle" fill="#F5EFFB" font-family="system-ui,Segoe UI,Arial,sans-serif" font-size="72" font-weight="700" letter-spacing="-1.8">Thor Companion</text>
+  <text x="600" y="226" text-anchor="middle" fill="#C5B9D3" font-family="system-ui,Segoe UI,Arial,sans-serif" font-size="28">Your Thor, on your phone.</text>
 
   <g fill="none" stroke="#C6B2E5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" aria-label="Thor to phone">
-    <path d="M250 207 H994 M978 193 L994 207 L978 221"/>
+    <path d="M250 140 H994 M978 126 L994 140 L978 154"/>
     <rect x="1038" y="66" width="76" height="148" rx="17"/>
     <path d="M1064 81 H1088 M1068 198 H1084"/>
   </g>
