@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="240" viewBox="0 0 1200 240" role="img" aria-label="Thor Companion — Your Thor, on your phone.">
+<rect width="1200" height="240" rx="24" fill="#1D1825"/>
+<rect x="48" y="44" width="152" height="152" rx="36" fill="#6B5C87"/>
+<g fill="none" stroke="#F5EFFB" stroke-width="6" stroke-linejoin="round"><rect x="83" y="72" width="82" height="55" rx="10"/><rect x="83" y="140" width="82" height="29" rx="8"/></g>
+<text x="238" y="114" fill="#F5EFFB" font-family="system-ui,Segoe UI,Arial,sans-serif" font-size="54" font-weight="650" letter-spacing="-1.3">Thor Companion</text>
+<text x="241" y="158" fill="#C5B9D3" font-family="system-ui,Segoe UI,Arial,sans-serif" font-size="23">Your Thor, on your phone.</text>
+<g fill="none" stroke="#C6B2E5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M983 112 C993 102 1007 102 1017 112 M991 124 C996 119 1004 119 1009 124"/><circle cx="1000" cy="136" r="2" fill="#C6B2E5"/><rect x="1043" y="64" width="65" height="112" rx="13"/><path d="M1066 76 H1085 M1071 163 H1080"/></g>
+</svg>
