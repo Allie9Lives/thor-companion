@@ -206,14 +206,41 @@ public class MonitorService extends Service {
         }
     }; }
 
+    private final PhoneRepairGate repairGate=new PhoneRepairGate();
+    private final Map<String,BluetoothDevice> repairPeers=new LinkedHashMap<>();
+    static List<BluetoothDevice> repairCandidates(){MonitorService s=instance;return s==null?Collections.emptyList():s.pendingPhones();}
+    private synchronized List<BluetoothDevice> pendingPhones(){
+        long now=SystemClock.elapsedRealtime();
+        repairPeers.entrySet().removeIf(e->!repairGate.contains(e.getKey(),now));
+        List<BluetoothDevice> result=new ArrayList<>();
+        for(BluetoothDevice d:repairPeers.values())if(d.getBondState()==BluetoothDevice.BOND_BONDED)result.add(d);
+        return result;
+    }
+    static boolean approvePhoneRepair(String address){MonitorService s=instance;return s!=null&&s.replacePhone(address);}
+    private synchronized boolean replacePhone(String address){
+        BluetoothDevice d=repairPeers.get(address);
+        if(closing||d==null||d.getBondState()!=BluetoothDevice.BOND_BONDED||!repairGate.contains(address,SystemClock.elapsedRealtime()))return false;
+        if(!getSharedPreferences("monitor",0).edit().putString("owner",address).commit())return false;
+        FileAccess.revoke(this);
+        subscriptions.clear();readSnapshots.clear();repairGate.clear();repairPeers.clear();
+        event("phone_repair_approved","Authorized phone replaced with local approval; network access revoked");
+        return true;
+    }
+
     private synchronized boolean authorized(BluetoothDevice device) {
         if (device.getBondState() != BluetoothDevice.BOND_BONDED) return false;
         String owner = getSharedPreferences("monitor", 0).getString("owner", "");
         if (owner.isEmpty()) {
             getSharedPreferences("monitor", 0).edit().putString("owner", device.getAddress()).commit();
-            event("phone_authorized", "First bonded phone claimed this test app"); return true;
+            event("phone_authorized", "First bonded phone authorized"); return true;
         }
-        return owner.equals(device.getAddress());
+        if(owner.equals(device.getAddress()))return true;
+        long now=SystemClock.elapsedRealtime();
+        repairPeers.entrySet().removeIf(e->!repairGate.contains(e.getKey(),now));
+        if(repairGate.record(device.getAddress(),now))event("phone_repair_needed","Bonded peer does not match saved authorized phone; local approval required");
+        repairPeers.put(device.getAddress(),device);
+        while(repairPeers.size()>8)repairPeers.remove(repairPeers.keySet().iterator().next());
+        return false;
     }
 
     private byte[] value(UUID id, JSONObject j) {

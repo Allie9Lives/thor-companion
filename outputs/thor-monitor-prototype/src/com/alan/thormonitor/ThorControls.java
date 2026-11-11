@@ -101,6 +101,7 @@ final class ThorControls {
         String setting=ControlHelper.setting(command,value);
         if(get(setting)!=value) throw new IllegalStateException("Setting was rejected");
     }
+    void holdSecondaryVolume(int value){if(FindThor.volumeLocked()&&get("secondary_screen_volume_level")!=value)helper("volume",value);}
     private int pct(int n,int max) { return Math.round(100f*n/max); }
     synchronized JSONObject snapshot() {
         JSONObject j=new JSONObject();
@@ -205,6 +206,7 @@ final class ThorControls {
                     if (!target.equals("top")) brightness(bottom(),bright);
                     break;
                 case "volume":
+                    if(FindThor.volumeLocked())throw new IllegalStateException("Volume is locked while Find my Thor is playing. Stop the sound first.");
                     range(value,0,100); target(target);
                     int volume=Math.round(value*audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)/100f);
                     if (!target.equals("top")) put("volume",volume);

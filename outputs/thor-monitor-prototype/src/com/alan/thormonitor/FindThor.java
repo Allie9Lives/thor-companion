@@ -13,21 +13,34 @@ final class FindThor {
     private static AudioManager audio;
     private static AudioFocusRequest focus;
     private static Context app;
-    private static int oldVolume, maximum;
+    private static int oldVolume, maximum, oldMediaVolume;
+    private static BroadcastReceiver volumeReceiver;
+    private static android.database.ContentObserver bottomVolumeObserver;
+    private static HandlerThread volumeThread;
     private static boolean oldMute;
     private static long began, fadeBegan;
     private static float currentVolume,fadeFrom;
     private static boolean fadingOut;
-    private static final Runnable fadeTick=new Runnable(){public void run(){if(!fadingOut||track==null)return;long elapsed=SystemClock.elapsedRealtime()-fadeBegan;if(elapsed>=220){finishStop(false);return;}track.setVolume(LocatorEnvelope.fadeOut(fadeFrom,elapsed));main.postDelayed(this,16);}};
+    private static final Runnable fadeTick=new Runnable(){public void run(){if(!fadingOut||track==null)return;holdVolume();long elapsed=SystemClock.elapsedRealtime()-fadeBegan;if(elapsed>=220){finishStop(false);return;}track.setVolume(LocatorEnvelope.fadeOut(fadeFrom,elapsed));main.postDelayed(this,16);}};
     static void requestStop(){LocatorStopPanel.dismiss();if(fadingOut)return;if(track==null){finishStop(false);return;}ringing=false;MonitorService.locatorChanged();fadingOut=true;main.removeCallbacks(tick);fadeFrom=currentVolume;fadeBegan=SystemClock.elapsedRealtime();main.post(fadeTick);}
     private static PowerManager.WakeLock wake;
     static volatile boolean ringing;
+    static boolean volumeLocked(){return ringing||fadingOut;}
+    private static void holdVolume(){
+        if(audio==null||!volumeLocked())return;
+        try{
+            if(audio.getStreamVolume(AudioManager.STREAM_ALARM)!=maximum)audio.setStreamVolume(AudioManager.STREAM_ALARM,maximum,0);
+            if(audio.isStreamMute(AudioManager.STREAM_ALARM))audio.adjustStreamVolume(AudioManager.STREAM_ALARM,AudioManager.ADJUST_UNMUTE,0);
+            if(audio.getStreamVolume(AudioManager.STREAM_MUSIC)!=oldMediaVolume)audio.setStreamVolume(AudioManager.STREAM_MUSIC,oldMediaVolume,0);
+        }catch(SecurityException ignored){}
+    }
     static float amplitude(long elapsed){return LocatorEnvelope.amplitude(elapsed);}
     private static final Runnable tick=new Runnable(){public void run(){
         if(!ringing || track==null)return;
+        holdVolume();
         long elapsed=SystemClock.elapsedRealtime()-began;
         if(elapsed>=60000){requestStop();return;}
-        currentVolume=amplitude(elapsed);track.setVolume(currentVolume);main.postDelayed(this,250);
+        currentVolume=amplitude(elapsed);track.setVolume(currentVolume);main.postDelayed(this,100);
     }};
     static void set(Context context,boolean enabled) throws Exception {
         FutureTask<Void> action=new FutureTask<>(()->{if(enabled)startNow(context.getApplicationContext());else requestStop();return null;});
@@ -55,6 +68,7 @@ final class FindThor {
         focus=new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT).setAudioAttributes(attributes)
             .setOnAudioFocusChangeListener(change->{if(change==AudioManager.AUDIOFOCUS_LOSS || change==AudioManager.AUDIOFOCUS_LOSS_TRANSIENT)stopNow();},main).build();
         if(audio.requestAudioFocus(focus)!=AudioManager.AUDIOFOCUS_REQUEST_GRANTED){audio=null;focus=null;throw new IllegalStateException("Audio is busy. Try Find Thor again");}
+        oldMediaVolume=audio.getStreamVolume(AudioManager.STREAM_MUSIC);
         oldVolume=audio.getStreamVolume(AudioManager.STREAM_ALARM);oldMute=audio.isStreamMute(AudioManager.STREAM_ALARM);
         maximum=audio.getStreamMaxVolume(AudioManager.STREAM_ALARM);
         try {
@@ -77,7 +91,18 @@ final class FindThor {
             audio.setStreamVolume(AudioManager.STREAM_ALARM,maximum,0);
             if(oldMute)audio.adjustStreamVolume(AudioManager.STREAM_ALARM,AudioManager.ADJUST_UNMUTE,0);
             wake=context.getSystemService(PowerManager.class).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"ThorMonitor:Find");wake.acquire(65000);
-            began=SystemClock.elapsedRealtime();ringing=true;MonitorService.locatorChanged();track.play();main.post(tick);
+            began=SystemClock.elapsedRealtime();ringing=true;
+            volumeReceiver=new BroadcastReceiver(){@Override public void onReceive(Context c,Intent i){holdVolume();}};
+            context.registerReceiver(volumeReceiver,new IntentFilter("android.media.VOLUME_CHANGED_ACTION"));
+            int bottomVolume=android.provider.Settings.System.getInt(context.getContentResolver(),"secondary_screen_volume_level",-1);
+            if(bottomVolume>=0){
+                volumeThread=new HandlerThread("ThorLocatorVolume");volumeThread.start();
+                bottomVolumeObserver=new android.database.ContentObserver(new Handler(volumeThread.getLooper())){
+                    @Override public void onChange(boolean selfChange){if(volumeLocked())new ThorControls(context).holdSecondaryVolume(bottomVolume);}
+                };
+                context.getContentResolver().registerContentObserver(android.provider.Settings.System.getUriFor("secondary_screen_volume_level"),false,bottomVolumeObserver);
+            }
+            MonitorService.locatorChanged();track.play();main.post(tick);
             NotificationManager nm=context.getSystemService(NotificationManager.class);
             NotificationChannel channel=new NotificationChannel("find_thor","Find Thor",NotificationManager.IMPORTANCE_HIGH);
             channel.setSound(null,null);channel.enableVibration(false);nm.createNotificationChannel(channel);
@@ -95,6 +120,9 @@ final class FindThor {
         boolean wasRinging=ringing;
         if(removePanel)LocatorStopPanel.hide();
         main.removeCallbacks(tick);main.removeCallbacks(fadeTick);fadingOut=false;ringing=false;if(wasRinging)MonitorService.locatorChanged();
+        if(app!=null&&bottomVolumeObserver!=null){app.getContentResolver().unregisterContentObserver(bottomVolumeObserver);bottomVolumeObserver=null;}
+        if(volumeThread!=null){volumeThread.quitSafely();volumeThread=null;}
+        if(app!=null&&volumeReceiver!=null){try{app.unregisterReceiver(volumeReceiver);}catch(IllegalArgumentException ignored){}volumeReceiver=null;}
         if(track!=null){try{track.stop();}catch(Exception ignored){}track.release();track=null;}
         if(audio!=null){
             if(audio.getStreamVolume(AudioManager.STREAM_ALARM)==maximum){audio.setStreamVolume(AudioManager.STREAM_ALARM,oldVolume,0);if(oldMute)audio.adjustStreamVolume(AudioManager.STREAM_ALARM,AudioManager.ADJUST_MUTE,0);}

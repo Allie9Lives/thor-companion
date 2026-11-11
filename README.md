@@ -9,9 +9,9 @@ Install **Thor Monitor** on the Thor and **Thor Companion** on your phone.
 
 | App | Device | Download |
 | --- | --- | --- |
-| Thor Monitor **0.14.3** | AYN Thor | [Host APK](https://github.com/Allie9Lives/thor-companion/releases/download/v0.14.3/Thor-Monitor-0.14.3.apk) |
-| Thor Companion **0.14.0** | Android phone | [Android APK](https://github.com/Allie9Lives/thor-companion/releases/download/v0.14.3/Thor-Companion-Android-0.14.0.apk) |
-| Thor Companion **0.14.0** | iPhone | [Development IPA](https://github.com/Allie9Lives/thor-companion/releases/download/v0.14.3/Thor-Companion-iOS-0.14.0-development.ipa) |
+| Thor Monitor **0.14.4** | AYN Thor | [Host APK](https://github.com/Allie9Lives/thor-companion/releases/download/v0.14.4/Thor-Monitor-0.14.4.apk) |
+| Thor Companion **0.14.4** | Android phone | [Android APK](https://github.com/Allie9Lives/thor-companion/releases/download/v0.14.4/Thor-Companion-Android-0.14.4.apk) |
+| Thor Companion **0.14.4** | iPhone | [Development IPA](https://github.com/Allie9Lives/thor-companion/releases/download/v0.14.4/Thor-Companion-iOS-0.14.4-development.ipa) |
 
 These are development builds. The iPhone IPA requires valid provisioning or re-signing; it is not an App Store or TestFlight install. [All release files, source archives and checksums →](https://github.com/Allie9Lives/thor-companion/releases/latest)
 
@@ -20,9 +20,9 @@ These are development builds. The iPhone IPA requires valid provisioning or re-s
 - **See your Thor at a glance.** Battery, charging power, temperature, CPU/GPU/RAM, model, internal storage and microSD.
 - **Control both screens.** Brightness and volume with sync, plus refresh rate, fan, performance and power options.
 - **Keep an eye on battery life.** Usage graphs, runtime estimates, charging alerts, iPhone widgets and Live Activity.
-- **Find your Thor.** Play a rising locator sound and stop it from either device.
+- **Find your Thor.** Play a loud locator sound with locked volume and stop it from either device.
 - **Type, capture and transfer.** Use your phone as a keyboard, save screenshots of either screen or both, and browse shared files over Wi-Fi or an existing VPN.
-- **Stay connected.** Automatic Bluetooth/Wi-Fi handoff, reconnect, and configurable overnight battery saving on trusted Wi-Fi.
+- **Stay connected.** Automatic Bluetooth/Wi-Fi handoff, reconnect, locally approved pairing repair, and configurable overnight battery saving on trusted Wi-Fi.
 
 Choose **Light**, **Dark**, **Clear Purple**, or **Rainbow** on both apps.
 

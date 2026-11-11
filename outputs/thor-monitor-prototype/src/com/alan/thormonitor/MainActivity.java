@@ -2,6 +2,7 @@ package com.alan.thormonitor;
 
 import android.Manifest;
 import android.app.*;
+import android.bluetooth.BluetoothDevice;
 import android.bluetooth.*;
 import android.content.*;
 import android.content.pm.PackageManager;
@@ -153,8 +154,25 @@ public class MainActivity extends Activity {
         LinearLayout keyboard=disclosure("Phone keyboard","keyboard","Type on the Thor from your phone");body(keyboard,"Enable Thor Remote Keyboard, then select it. Your usual keyboard remains available.");
         button(keyboard,"Enable keyboard",false,()->startActivity(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)));button(keyboard,"Select keyboard",false,()->getSystemService(android.view.inputmethod.InputMethodManager.class).showInputMethodPicker());
         button(page,"Review setup",false,()->{screen=1;step=0;build();});
+        button(page,"Repair phone connection",false,this::repairPhone);
         Button forget=button(page,"Forget saved phone",false,()->{FileAccess.revoke(this);prefs.edit().remove("owner").putBoolean("monitor_wanted",false).apply();stopService(new Intent(this,MonitorService.class));Toast.makeText(this,"Phone forgotten. System Bluetooth pairing is unchanged.",Toast.LENGTH_LONG).show();handler.postDelayed(this::build,250);});forget.setTextColor(dark?0xFFFFA7A7:0xFFAD3030);
-        gap(page,16);body(page,"Thor Monitor 0.14.3");button(page,"Sound credits",false,this::soundCredits);
+        gap(page,16);body(page,"Thor Monitor 0.14.4");button(page,"Sound credits",false,this::soundCredits);
+    }
+    private void repairPhone(){
+        if(!nearby()){Toast.makeText(this,"Allow Bluetooth access first",Toast.LENGTH_LONG).show();return;}
+        List<BluetoothDevice> phones=MonitorService.repairCandidates();
+        if(phones.isEmpty()){
+            new AlertDialog.Builder(this).setTitle("Repair phone connection").setMessage("Keep monitoring on. Tap Reconnect on your phone, then return here within five minutes. Only bonded phones denied by this app can be approved.\n\nIf your phone says pairing information was removed, forget this Thor in the phone’s Bluetooth settings and connect again first.").setPositiveButton("OK",null).show();return;
+        }
+        String[] labels=new String[phones.size()];
+        for(int i=0;i<phones.size();i++){BluetoothDevice d=phones.get(i);String name=d.getName();String address=d.getAddress();labels[i]=(name==null?"Phone":name)+" · "+address.substring(address.length()-5);}
+        new AlertDialog.Builder(this).setTitle("Choose your phone").setItems(labels,(dialog,which)->{
+            BluetoothDevice d=phones.get(which);
+            new AlertDialog.Builder(this).setTitle("Authorize this phone?").setMessage("Approve only the phone you just used to reconnect. This replaces the saved phone and disables its Wi-Fi access. Link Wi-Fi access again from the companion after repair.").setNegativeButton("Cancel",null).setPositiveButton("Approve",(confirm,w)->{
+                boolean ok=MonitorService.approvePhoneRepair(d.getAddress());
+                Toast.makeText(this,ok?"Phone approved. Tap Reconnect on your phone.":"Request expired. Reconnect from the phone and try again.",Toast.LENGTH_LONG).show();build();
+            }).show();
+        }).setNegativeButton("Cancel",null).show();
     }
     private void saveRest(){MonitorService.restChanged();build();}
     private void restTime(String key,int initial){new TimePickerDialog(this,(v,h,m)->{int minute=h*60+m;String other=key.equals("rest_start")?"rest_end":"rest_start";if(minute==prefs.getInt(other,other.equals("rest_end")?360:1260)){Toast.makeText(this,"Start and restore times must differ",Toast.LENGTH_LONG).show();return;}prefs.edit().putInt(key,minute).apply();saveRest();},initial/60,initial%60,android.text.format.DateFormat.is24HourFormat(this)).show();}

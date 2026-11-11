@@ -993,6 +993,9 @@ class CompanionController extends ChangeNotifier {
   }
 
   Future<void> setControl(String key, int value, {String target = ''}) {
+    if (key == 'volume' && controlNumber('find') == 1) {
+      return Future.value();
+    }
     if (_disposed ||
         isDemo ||
         _transport is! ControlTransport ||
@@ -1055,6 +1058,10 @@ class CompanionController extends ChangeNotifier {
         }
         final request = _pendingSettings.remove(_pendingSettings.keys.first)!;
         if (request.session != _session) {
+          request.done.complete();
+          continue;
+        }
+        if (request.key == 'volume' && controlNumber('find') == 1) {
           request.done.complete();
           continue;
         }
@@ -1602,7 +1609,11 @@ class CompanionController extends ChangeNotifier {
               logBle('Thor BLE connection error: $e');
               _linkLost(
                 session,
-                'Could not connect to the Thor. Check that monitoring is running and try again.',
+                e.toString().toLowerCase().contains(
+                      'peer removed pairing information',
+                    )
+                    ? 'Bluetooth pairing has changed. Forget this Thor in Settings → Bluetooth, connect again, then use Repair phone connection in Thor Monitor if readings are denied.'
+                    : 'Could not connect to the Thor. Check that monitoring is running and try again.',
               );
             },
             onDone: () {
@@ -1789,7 +1800,14 @@ class CompanionController extends ChangeNotifier {
       if (session == _session) {
         lastFailure = e;
         logBle('Thor BLE read: $e');
-        error = e is FormatException
+        final detail = e.toString().toLowerCase();
+        final pairingFailure =
+            detail.contains('authentication is insufficient') ||
+            detail.contains('peer removed pairing information') ||
+            detail.contains('insufficient authentication');
+        error = pairingFailure
+            ? 'Phone authorization needs repair. On the Thor, open Thor Monitor → Settings → Repair phone connection, approve this phone, then reconnect. If iOS says pairing information was removed, forget the Thor in Settings → Bluetooth and connect again first.'
+            : e is FormatException
             ? 'Received an incomplete device reading. Tap Refresh to retry.'
             : 'Could not read the Thor. Keep it open, check pairing on both devices, then tap Refresh.';
       }

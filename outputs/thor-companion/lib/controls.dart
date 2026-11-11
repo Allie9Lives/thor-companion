@@ -29,6 +29,7 @@ class ControlsPage extends StatefulWidget {
 class _ControlsPageState extends State<ControlsPage> {
   bool get brightnessLinked => c.brightnessLinked;
   bool get volumeLinked => c.volumeLinked;
+  bool get locatorActive => c.controlNumber('find') == 1;
   CompanionController get c => widget.controller;
   bool get powerEnabled =>
       c.connected &&
@@ -316,7 +317,7 @@ class _ControlsPageState extends State<ControlsPage> {
               ),
               const SizedBox(height: 10),
               const Text(
-                'Find my Thor rises gently to full alarm volume over 20 seconds and stops after one minute. Tap the Thor’s notification to stop early.',
+                'Find my Thor plays at high alarm volume for up to one minute. Volume is locked until you stop the sound on either device.',
                 style: TextStyle(fontSize: 14),
               ),
             ],
@@ -386,7 +387,9 @@ class _ControlsPageState extends State<ControlsPage> {
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Sync volume'),
                   value: volumeLinked,
-                  onChanged: (v) => _setLinked('volume', v),
+                  onChanged: locatorActive
+                      ? null
+                      : (v) => _setLinked('volume', v),
                 ),
                 slider(
                   'Top screen',
@@ -394,7 +397,9 @@ class _ControlsPageState extends State<ControlsPage> {
                   'top',
                   c.controlNumber('vt'),
                   volumeLinked,
-                  allowed: state.settingsAllowed || !volumeLinked,
+                  allowed:
+                      !locatorActive &&
+                      (state.settingsAllowed || !volumeLinked),
                 ),
                 slider(
                   'Bottom screen',
@@ -402,8 +407,10 @@ class _ControlsPageState extends State<ControlsPage> {
                   'bottom',
                   c.controlNumber('vb'),
                   volumeLinked,
-                  allowed: state.settingsAllowed,
+                  allowed: !locatorActive && state.settingsAllowed,
                 ),
+                if (locatorActive)
+                  const Text('Volume locked · Find my Thor is playing'),
               ],
             ),
           ),

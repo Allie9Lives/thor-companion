@@ -682,7 +682,7 @@ class _CompanionHomeState extends State<CompanionHome>
             ),
             SizedBox(height: 18),
             Text(
-              'Start monitoring on the Thor, then tap Find Thor and select your device.\n\nFor first pairing, keep the Thor open and confirm the pairing request on both devices. The request may appear in the Thor’s notifications.\n\nAutomatic reconnect resumes after interruptions. Disconnect pauses retries. iOS controls background execution; reopen the app if updates pause. Readings are marked out of date after 90 seconds without an update.\n\nAll readings are transferred directly over Bluetooth.',
+              'Start monitoring on the Thor, then tap Find Thor and select your device.\n\nFor first pairing, keep the Thor open and confirm the pairing request on both devices. The request may appear in the Thor’s notifications.\n\nIf Bluetooth connects but readings are denied, open Thor Monitor → Settings → Repair phone connection and approve this phone. If iOS says pairing information was removed, forget the Thor in Settings → Bluetooth and connect again.\n\nAutomatic reconnect resumes after interruptions. Disconnect pauses retries. iOS controls background execution; reopen the app if updates pause. Readings are marked out of date after 90 seconds without an update.\n\nAll readings are transferred directly over Bluetooth.',
               style: TextStyle(color: secondaryText, height: 1.6),
             ),
             SizedBox(height: 20),
