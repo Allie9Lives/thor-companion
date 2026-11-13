@@ -243,7 +243,35 @@ class CompanionController extends ChangeNotifier {
   String? _activityDevice;
   int _seenActivityWarning = 0;
   bool _detailsPending = false;
-  Future<Map<String, dynamic>> _requestDetails(String command) async {
+  Timer? _appRefreshTimer;
+  Future<void> _detailTail = Future.value();
+  Future<Map<String, dynamic>> _requestDetails(
+    String command, {
+    Object? value,
+    String? target,
+  }) {
+    final done = Completer<Map<String, dynamic>>();
+    final session = _session, device = selected?.id;
+    _detailTail = _detailTail.then((_) async {
+      try {
+        if (_disposed || session != _session || device != selected?.id) {
+          throw StateError('Connection changed.');
+        }
+        done.complete(
+          await _performDetails(command, value: value, target: target),
+        );
+      } catch (error, stack) {
+        done.completeError(error, stack);
+      }
+    });
+    return done.future;
+  }
+
+  Future<Map<String, dynamic>> _performDetails(
+    String command, {
+    Object? value,
+    String? target,
+  }) async {
     if (_transport is! ControlTransport ||
         !connected ||
         selected == null ||
@@ -281,7 +309,8 @@ class CompanionController extends ChangeNotifier {
               jsonEncode({
                 'id': id,
                 'set': command,
-                'value': command == 'files_session' ? 1 : 0,
+                'value': value ?? (command == 'files_session' ? 1 : 0),
+                'target': ?target,
               }),
             ),
           )
@@ -305,6 +334,67 @@ class CompanionController extends ChangeNotifier {
       _flushRefreshAfterControl();
       _notify();
     }
+  }
+
+  Future<List<Map<String, dynamic>>> installedApps({
+    bool openOnly = false,
+  }) async {
+    final apps = <Map<String, dynamic>>[];
+    var cursor = 0;
+    for (var page = 0; page < 500; page++) {
+      final data = await _requestDetails(
+        openOnly ? 'apps_open' : 'apps',
+        value: cursor,
+      );
+      final entries = data['apps'];
+      if (entries is! List) {
+        throw StateError('Update Thor Monitor to use the app drawer.');
+      }
+      apps.addAll(
+        entries.map((entry) => Map<String, dynamic>.from(entry as Map)),
+      );
+      final next = data['next'];
+      if (next == -1) return apps;
+      if (next is! int || next <= cursor) {
+        throw StateError('App list did not advance. Refresh and try again.');
+      }
+      cursor = next;
+    }
+    throw StateError('App list is too large.');
+  }
+
+  Future<void> appAction(
+    String package, {
+    required String target,
+    bool close = false,
+  }) async {
+    if (!RegExp(
+          r'^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$',
+        ).hasMatch(package) ||
+        package.length > 96 ||
+        !const ['top', 'bottom'].contains(target)) {
+      throw ArgumentError('Invalid app or screen');
+    }
+    await _requestDetails(
+      close ? 'app_close' : 'app_open',
+      value: package,
+      target: target,
+    );
+    final session = _session;
+    _appRefreshTimer?.cancel();
+    _appRefreshTimer = Timer(const Duration(seconds: 2), () {
+      if (!_disposed && session == _session) {
+        _activityAttempt = null;
+        unawaited(refreshActivity());
+      }
+    });
+  }
+
+  Future<Map<String, dynamic>> ftpAction(String action) {
+    if (!const ['ftp_status', 'ftp_start', 'ftp_stop'].contains(action)) {
+      throw ArgumentError.value(action);
+    }
+    return _requestDetails(action);
   }
 
   Future<Map<String, dynamic>> pairFiles() async {
@@ -1916,6 +2006,7 @@ class CompanionController extends ChangeNotifier {
     ++_session;
     _clock?.cancel();
     _powerRefreshTimer?.cancel();
+    _appRefreshTimer?.cancel();
     _scanTimeout?.cancel();
     unawaited(_radioSubscription?.cancel());
     unawaited(_scanSubscription?.cancel());

@@ -37,161 +37,176 @@ class _SettingsSheetState extends State<SettingsSheet> {
     return SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(22, 4, 22, 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                if (appearancePage)
-                  IconButton(
-                    tooltip: 'Back to settings',
-                    onPressed: () => setState(() => appearancePage = false),
-                    icon: const Icon(Icons.arrow_back),
+        child: AnimatedSize(
+          alignment: Alignment.topCenter,
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  if (appearancePage)
+                    IconButton(
+                      tooltip: 'Back to settings',
+                      onPressed: () => setState(() => appearancePage = false),
+                      icon: const Icon(Icons.arrow_back),
+                    ),
+                  Expanded(
+                    child: Text(
+                      appearancePage ? 'Appearance' : 'Settings',
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
                   ),
-                Expanded(
-                  child: Text(
-                    appearancePage ? 'Appearance' : 'Settings',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
+                  IconButton(
+                    tooltip: 'Close settings',
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              if (appearancePage) ...[
+                grid(
+                  choices
+                      .map(
+                        (choice) => (
+                          choice.$2,
+                          choice.$3,
+                          choice.$1 == selected
+                              ? 'Selected'
+                              : choice.$1 == AppAppearance.system
+                              ? 'Follow iPhone appearance'
+                              : 'Use ${choice.$2}',
+                          () {
+                            widget.onAppearanceChanged(choice.$1);
+                            setState(() {
+                              selected = choice.$1;
+                              appearancePage = false;
+                            });
+                          },
+                        ),
+                      )
+                      .toList(),
+                  selectedLabel: choices.firstWhere((c) => c.$1 == selected).$2,
+                ),
+              ] else ...[
+                AnimatedBuilder(
+                  animation: widget.controller,
+                  builder: (context, _) => surface(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Reconnect automatically',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Disconnect pauses retries.',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: p.secondaryText,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Switch(
+                          value: widget.controller.automaticReconnect,
+                          onChanged: widget.controller.isDemo
+                              ? null
+                              : (value) => unawaited(
+                                  widget.controller.setAutomaticReconnect(
+                                    value,
+                                  ),
+                                ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-                IconButton(
-                  tooltip: 'Close settings',
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close),
+                const SizedBox(height: 16),
+                grid([
+                  (
+                    'Appearance',
+                    Icons.palette_outlined,
+                    choices.firstWhere((c) => c.$1 == selected).$2,
+                    () => setState(() => appearancePage = true),
+                  ),
+                  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS)
+                    (
+                      'Battery widgets',
+                      Icons.widgets_outlined,
+                      'Home & Lock Screen',
+                      () => widget.onAction('widgets'),
+                    ),
+                  (
+                    'Battery notifications',
+                    Icons.notifications_outlined,
+                    'Alerts & thresholds',
+                    () => widget.onAction('alerts'),
+                  ),
+                  (
+                    'Battery insights',
+                    Icons.insights_outlined,
+                    'History & runtime',
+                    () => widget.onAction('insights'),
+                  ),
+                  (
+                    'Files',
+                    Icons.folder_outlined,
+                    'Wi-Fi / VPN',
+                    () => widget.onAction('files'),
+                  ),
+                  (
+                    'Connection health',
+                    Icons.monitor_heart_outlined,
+                    'Bluetooth & network',
+                    () => widget.onAction('health'),
+                  ),
+                ]),
+                const SizedBox(height: 22),
+                Divider(color: p.border, height: 1),
+                const SizedBox(height: 8),
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                  leading: const Icon(Icons.help_outline),
+                  title: const Text('Connection help'),
+                  trailing: const Icon(Icons.chevron_right, size: 20),
+                  onTap: () => widget.onAction('help'),
+                ),
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                  leading: const Icon(Icons.music_note_outlined),
+                  title: const Text('Sound credits'),
+                  trailing: const Icon(Icons.chevron_right, size: 20),
+                  onTap: () => widget.onAction('credits'),
+                ),
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                  leading: const Icon(Icons.info_outline),
+                  title: const Text('About'),
+                  trailing: const Icon(Icons.chevron_right, size: 20),
+                  onTap: () => widget.onAction('about'),
                 ),
               ],
-            ),
-            const SizedBox(height: 18),
-            if (appearancePage) ...[
-              grid(
-                choices
-                    .map(
-                      (choice) => (
-                        choice.$2,
-                        choice.$3,
-                        choice.$1 == selected
-                            ? 'Selected'
-                            : choice.$1 == AppAppearance.system
-                            ? 'Follow iPhone appearance'
-                            : 'Use ${choice.$2}',
-                        () {
-                          widget.onAppearanceChanged(choice.$1);
-                          setState(() {
-                            selected = choice.$1;
-                            appearancePage = false;
-                          });
-                        },
-                      ),
-                    )
-                    .toList(),
-                selectedLabel: choices.firstWhere((c) => c.$1 == selected).$2,
-              ),
-            ] else ...[
-              AnimatedBuilder(
-                animation: widget.controller,
-                builder: (context, _) => surface(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Reconnect automatically',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Disconnect pauses retries.',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: p.secondaryText,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Switch(
-                        value: widget.controller.automaticReconnect,
-                        onChanged: widget.controller.isDemo
-                            ? null
-                            : (value) => unawaited(
-                                widget.controller.setAutomaticReconnect(value),
-                              ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              grid([
-                (
-                  'Appearance',
-                  Icons.palette_outlined,
-                  choices.firstWhere((c) => c.$1 == selected).$2,
-                  () => setState(() => appearancePage = true),
-                ),
-                if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS)
-                  (
-                    'Battery widgets',
-                    Icons.widgets_outlined,
-                    'Home & Lock Screen',
-                    () => widget.onAction('widgets'),
-                  ),
-                (
-                  'Battery notifications',
-                  Icons.notifications_outlined,
-                  'Alerts & thresholds',
-                  () => widget.onAction('alerts'),
-                ),
-                (
-                  'Battery insights',
-                  Icons.insights_outlined,
-                  'History & runtime',
-                  () => widget.onAction('insights'),
-                ),
-                (
-                  'Files',
-                  Icons.folder_outlined,
-                  'Wi-Fi / VPN',
-                  () => widget.onAction('files'),
-                ),
-                (
-                  'Connection health',
-                  Icons.monitor_heart_outlined,
-                  'Bluetooth & network',
-                  () => widget.onAction('health'),
-                ),
-              ]),
-              const SizedBox(height: 22),
-              Divider(color: p.border, height: 1),
-              const SizedBox(height: 8),
-              ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                leading: const Icon(Icons.help_outline),
-                title: const Text('Connection help'),
-                trailing: const Icon(Icons.chevron_right, size: 20),
-                onTap: () => widget.onAction('help'),
-              ),
-              ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                leading: const Icon(Icons.music_note_outlined),
-                title: const Text('Sound credits'),
-                trailing: const Icon(Icons.chevron_right, size: 20),
-                onTap: () => widget.onAction('credits'),
-              ),
             ],
-          ],
+          ),
         ),
       ),
     );

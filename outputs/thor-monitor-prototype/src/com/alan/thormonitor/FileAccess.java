@@ -25,7 +25,7 @@ final class FileAccess {
  private static String fingerprint;
  private static final java.util.concurrent.atomic.AtomicBoolean capturing=new java.util.concurrent.atomic.AtomicBoolean();
  static boolean wifiConnected(Context c){android.net.ConnectivityManager manager=c.getSystemService(android.net.ConnectivityManager.class);for(android.net.Network n:manager.getAllNetworks()){android.net.NetworkCapabilities caps=manager.getNetworkCapabilities(n);if(caps!=null&&caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI))return true;}return false;}
- private static JSONObject status(Context c)throws Exception{return new JSONObject().put("version",c.getPackageManager().getPackageInfo(c.getPackageName(),0).versionName).put("monitoring",MonitorService.running).put("wifi",wifiConnected(c)).put("helper",new ThorControls(c).helperReady()).put("capture",true).put("adaptive_control",1).put("recovery_enabled",Recovery.enabled(c)).put("recovery_paired",Recovery.paired(c)).put("recovery_permission",Recovery.permitted(c)).put("recovery_status",Recovery.state).put("file_access",enabled(c)).put("overlay_permission",LocatorStopPanel.allowed(c));}
+ private static JSONObject status(Context c)throws Exception{return new JSONObject().put("version",c.getPackageManager().getPackageInfo(c.getPackageName(),0).versionName).put("monitoring",MonitorService.running).put("wifi",wifiConnected(c)).put("helper",new ThorControls(c).helperReady()).put("capture",true).put("recording",new ThorControls(c).helperReady()).put("adaptive_control",1).put("recovery_enabled",Recovery.enabled(c)).put("recovery_paired",Recovery.paired(c)).put("recovery_permission",Recovery.permitted(c)).put("recovery_status",Recovery.state).put("file_access",enabled(c)).put("overlay_permission",LocatorStopPanel.allowed(c));}
  private static final Set<Socket> active=ConcurrentHashMap.newKeySet();
  static boolean enabled(Context c){return c.getSharedPreferences("monitor",0).getBoolean("files_enabled",false);}
  static String folder(Context c,String root){return c.getSharedPreferences("monitor",0).getString("files_"+root,"");}
@@ -39,11 +39,20 @@ final class FileAccess {
  static synchronized void set(Context c,boolean on)throws Exception{
   c.getSharedPreferences("monitor",0).edit().putBoolean("files_enabled",on).apply();if(on)start(c);else stop();
  }
- static synchronized void stop(){for(Socket client:active)try{client.close();}catch(Exception ignored){}active.clear();if(server!=null)try{server.close();}catch(Exception ignored){}server=null;if(acceptor!=null)acceptor.shutdownNow();if(workers!=null)workers.shutdownNow();}
+ static synchronized void stop(){FtpAccess.stop();for(Socket client:active)try{client.close();}catch(Exception ignored){}active.clear();if(server!=null)try{server.close();}catch(Exception ignored){}server=null;if(acceptor!=null)acceptor.shutdownNow();if(workers!=null)workers.shutdownNow();}
  static synchronized void start(Context c)throws Exception{
   if(server!=null&&!server.isClosed())return;
   if(!enabled(c))return;
   app=c.getApplicationContext();
+  SSLContext tls=tlsContext(c);
+  SSLServerSocket socket=(SSLServerSocket)tls.getServerSocketFactory().createServerSocket();socket.setReuseAddress(true);socket.bind(new InetSocketAddress(PORT));socket.setEnabledProtocols(new String[]{"TLSv1.2"});
+  server=socket;
+  android.content.SharedPreferences prefs=app.getSharedPreferences("monitor",0);
+  if(!prefs.contains("files_token")){byte[] token=new byte[32];new SecureRandom().nextBytes(token);prefs.edit().putString("files_token",hex(token)).commit();}
+  workers=new ThreadPoolExecutor(2,2,30,TimeUnit.SECONDS,new ArrayBlockingQueue<Runnable>(4),new ThreadPoolExecutor.AbortPolicy());
+  acceptor=Executors.newSingleThreadExecutor();acceptor.execute(()->{while(!socket.isClosed()){try{SSLSocket client=(SSLSocket)socket.accept();client.setSoTimeout(15000);active.add(client);try{workers.execute(()->serve(client));}catch(Exception e){active.remove(client);client.close();}}catch(Exception e){if(socket.isClosed())break;}}});
+ }
+ static synchronized SSLContext tlsContext(Context c)throws Exception{
   KeyStore ks=KeyStore.getInstance("AndroidKeyStore");ks.load(null);String alias="thor-file-tls-ec-v1";
   if(!ks.containsAlias(alias)){
    KeyPairGenerator gen=KeyPairGenerator.getInstance("EC","AndroidKeyStore");
@@ -62,13 +71,9 @@ final class FileAccess {
    public X509Certificate[] getCertificateChain(String a){return new X509Certificate[]{cert};}public PrivateKey getPrivateKey(String a){return key;}
   };
   SSLContext tls=SSLContext.getInstance("TLS");tls.init(new KeyManager[]{km},null,new SecureRandom());
-  SSLServerSocket socket=(SSLServerSocket)tls.getServerSocketFactory().createServerSocket();socket.setReuseAddress(true);socket.bind(new InetSocketAddress(PORT));socket.setEnabledProtocols(new String[]{"TLSv1.2"});
-  server=socket;
-  android.content.SharedPreferences prefs=app.getSharedPreferences("monitor",0);
-  if(!prefs.contains("files_token")){byte[] token=new byte[32];new SecureRandom().nextBytes(token);prefs.edit().putString("files_token",hex(token)).commit();}
-  workers=new ThreadPoolExecutor(2,2,30,TimeUnit.SECONDS,new ArrayBlockingQueue<Runnable>(4),new ThreadPoolExecutor.AbortPolicy());
-  acceptor=Executors.newSingleThreadExecutor();acceptor.execute(()->{while(!socket.isClosed()){try{SSLSocket client=(SSLSocket)socket.accept();client.setSoTimeout(15000);active.add(client);try{workers.execute(()->serve(client));}catch(Exception e){active.remove(client);client.close();}}catch(Exception e){if(socket.isClosed())break;}}});
+  return tls;
  }
+ static String certificatePin(){return fingerprint;}
  static String hex(byte[] data){StringBuilder b=new StringBuilder();for(byte v:data)b.append(String.format(java.util.Locale.ROOT,"%02x",v&255));return b.toString();}
  static synchronized JSONObject networkSession(Context c,String id)throws Exception{
   if(!enabled(c))throw new IllegalStateException("Enable Wi-Fi access in Host settings first");start(c);return credentials(c,id);
@@ -123,6 +128,15 @@ final class FileAccess {
     int size=Integer.parseInt(headers.getOrDefault("content-length","-1"));if(size<1||size>180)throw new IllegalArgumentException("Invalid command size");
     byte[] bytes=new byte[size];new DataInputStream(in).readFully(bytes);byte[] data=MonitorService.networkControl(bytes);
     json(out,200,new JSONObject().put("bytes",android.util.Base64.encodeToString(data,android.util.Base64.NO_WRAP)));return;
+   }
+   if(method.equals("GET")&&route.equals("/v1/app-icon")){byte[] icon=AppCatalog.icon(app,q.getOrDefault("package",""),q.getOrDefault("revision",""));reply(out,200,"image/png",icon.length);out.write(icon);out.flush();return;}
+   if(route.startsWith("/v1/record/")){
+    String action=route.substring("/v1/record/".length()),token=q.getOrDefault("token","");if(!token.isEmpty()&&!token.matches("[a-f0-9]{24}"))throw new IllegalArgumentException("Invalid recording");
+    if(action.equals("file")&&method.equals("GET")){int screen=Integer.parseInt(q.getOrDefault("screen","-1"));if(screen<0||screen>1)throw new IllegalArgumentException("Invalid screen");try(RecordingBroker.Clip clip=RecordingBroker.open(app,token,screen)){reply(out,200,"video/mp4",clip.size);copy(clip.stream,out,clip.size);}return;}
+    if((action.equals("status")&&method.equals("GET"))||(!action.equals("status")&&method.equals("POST")&&java.util.Arrays.asList("start","stop","clear").contains(action))){
+     if(action.equals("start")&&!wifiConnected(app))throw new IllegalStateException("Connect the Thor to Wi-Fi before recording");int mode=Integer.parseInt(q.getOrDefault("mode","0"));json(out,200,RecordingBroker.request(app,"record_"+action,token,mode,Integer.parseInt(q.getOrDefault("quality","1")),Integer.parseInt(q.getOrDefault("fps","60"))));return;
+    }
+    throw new IllegalArgumentException("Unknown recording action");
    }
    if(method.equals("POST")&&route.equals("/v1/capture")){
     int mode=Integer.parseInt(q.getOrDefault("mode","-1"));if(mode<0||mode>2)throw new IllegalArgumentException("Choose top, bottom or both");

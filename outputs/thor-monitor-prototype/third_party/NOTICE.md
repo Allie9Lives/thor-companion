@@ -10,3 +10,7 @@ Thor Monitor uses these pinned components for local wireless-debugging recovery.
 - AndroidX Annotation JVM 1.9.1 — The Android Open Source Project. Apache-2.0. https://android.googlesource.com/platform/frameworks/support/+/androidx-main/annotation/
 
 The original SPAKE2 Java and native source archives are provided under source/, together with the app source and build script. The application can be rebuilt and re-signed with replacement library binaries; no signature or integrity restriction prevents this. Copyright, LGPL-3.0 and GPL-3.0 notices accompany the source. No OEM APKs, decompiled OEM sources, private recovery identities or development signing keys are included.
+
+## Desktop FTP support
+
+Apache FtpServer 1.2.1 (ftpserver-core and ftplet-api) and Apache MINA 2.2.10 are distributed under Apache License 2.0. Their LICENSE and NOTICE files are included beside the libraries and packaged with the app. SLF4J API and NOP 1.7.36 use the MIT license in LICENSE-SLF4J.txt. Logging is disabled for this embedded server; credentials are never written to diagnostics.

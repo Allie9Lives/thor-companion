@@ -13,6 +13,7 @@ import java.util.concurrent.*;
 public class MonitorService extends Service {
     static volatile ActivityMonitor activity;
     private static volatile MonitorService instance;
+    static void refreshFocusedApps(){MonitorService s=instance;if(s!=null&&s.activity!=null&&s.timer!=null)s.timer.execute(()->{s.activity.invalidate();s.activity.sample(s.latest==null?new JSONObject():s.latest);});}
     static void locatorChanged(){MonitorService service=instance;if(service!=null)service.timeoutHandler.post(()->{if(!service.closing&&running){service.notifySubscribers();}});}
     private final Telemetry telemetry = new Telemetry();
     public static volatile String state = "Monitoring stopped";
@@ -433,6 +434,8 @@ public class MonitorService extends Service {
     };
     @Override public int onStartCommand(Intent i, int flags, int id) {
         if(i!=null&&"REST_EVALUATE".equals(i.getAction())){if(powerSaving!=null&&monitoringStarted){timer.execute(()->evaluatePower());return START_STICKY;}}
+        if(i!=null && "STOP_RECORDING".equals(i.getAction())){RecordingBroker.stopCurrentAsync(this);if(monitoringStarted)return START_STICKY;i=null;}
+        if(i!=null && "STOP_FTP".equals(i.getAction())){FtpAccess.stop();if(monitoringStarted)return START_STICKY;i=null;}
         if(i!=null && "STOP_FIND".equals(i.getAction())){FindThor.requestStop();if(monitoringStarted)return START_STICKY;i=null;}
         if (i != null && "STOP".equals(i.getAction())) {
             getSharedPreferences("monitor",0).edit().putBoolean("monitor_wanted",false).apply();stopSelf();return START_NOT_STICKY;
@@ -472,7 +475,7 @@ public class MonitorService extends Service {
     @Override public void onDestroy() {
         closing = true;
         if(instance==this)instance=null;
-        FindThor.stopNow();FileAccess.stop();ServiceRecovery.schedule(this);
+        FindThor.stopNow();RecordingBroker.stopCurrentAsync(this);FileAccess.stop();ServiceRecovery.schedule(this);
         resetNotifications();
         running = false;
         timeoutHandler.removeCallbacks(testTimeout);

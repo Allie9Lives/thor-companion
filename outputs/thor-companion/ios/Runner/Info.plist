@@ -75,7 +75,7 @@
 		<string>bluetooth-central</string>
 	</array>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Save screenshots from your Thor to Photos on this iPhone.</string>
+	<string>Save screenshots and recordings from your Thor to Photos on this iPhone.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>

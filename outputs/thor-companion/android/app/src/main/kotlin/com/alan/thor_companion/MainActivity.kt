@@ -9,6 +9,40 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
+    private fun saveRecording(call: io.flutter.plugin.common.MethodCall, result: MethodChannel.Result) {
+        val paths = call.argument<List<String>>("paths")
+        val screen = call.argument<String>("screen")
+        val root = java.io.File(cacheDir,"thor-transfers").canonicalPath + java.io.File.separator
+        if (Build.VERSION.SDK_INT < 29 || screen !in listOf("top","bottom","both") || paths == null || paths.size != (if (screen == "both") 2 else 1)) {
+            result.error("recording", "Invalid recording files.", null); return
+        }
+        val clips = paths.map { java.io.File(it) }
+        if (clips.any { !it.canonicalPath.startsWith(root) || !it.isFile || it.extension != "mp4" || it.length() !in 128..(512L*1024*1024) }) {
+            result.error("recording", "Recording cache is unavailable. Download again.", null); return
+        }
+        Thread {
+            val inserted = mutableListOf<android.net.Uri>()
+            try {
+                clips.forEachIndexed { index, file ->
+                    val label = if (screen == "both") if (index == 0) "top" else "bottom" else screen
+                    val values = ContentValues().apply {
+                        put(MediaStore.Video.Media.DISPLAY_NAME,"Thor-$label-${System.currentTimeMillis()}.mp4")
+                        put(MediaStore.Video.Media.MIME_TYPE,"video/mp4")
+                        put(MediaStore.Video.Media.RELATIVE_PATH,"${Environment.DIRECTORY_MOVIES}/Thor Companion")
+                        put(MediaStore.Video.Media.IS_PENDING,1)
+                    }
+                    val uri = contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI,values) ?: error("Could not create video")
+                    inserted.add(uri)
+                    contentResolver.openOutputStream(uri)?.use { output -> file.inputStream().use { it.copyTo(output,65536) } } ?: error("Could not save video")
+                }
+                for (uri in inserted) contentResolver.update(uri,ContentValues().apply {put(MediaStore.Video.Media.IS_PENDING,0)},null,null)
+                runOnUiThread {result.success(null)}
+            } catch (e: Exception) {
+                for (uri in inserted) contentResolver.delete(uri,null,null)
+                runOnUiThread {result.error("recording_save","Could not save recording to Photos. Check available storage.",null)}
+            }
+        }.start()
+    }
     private val files by lazy { ThorFileBridge(this) }
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
         if (!files.activityResult(requestCode, resultCode, data)) super.onActivityResult(requestCode, resultCode, data)
@@ -23,6 +57,13 @@ class MainActivity : FlutterActivity() {
     }
     override fun configureFlutterEngine(engine: FlutterEngine) {
         super.configureFlutterEngine(engine)
+        MethodChannel(engine.dartExecutor.binaryMessenger, "com.alan.thorCompanion/about").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "version" -> {val info=packageManager.getPackageInfo(packageName,0);result.success(mapOf("version" to info.versionName,"build" to info.longVersionCode.toString()))}
+                "github" -> try {startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,android.net.Uri.parse("https://github.com/Allie9Lives")));result.success(null)} catch (e: Exception) {result.error("open_link","Couldn’t open GitHub.",null)}
+                else -> result.notImplemented()
+            }
+        }
         MethodChannel(engine.dartExecutor.binaryMessenger, "com.alan.thorCompanion/files").setMethodCallHandler { call, result -> files.call(call, result) }
         MethodChannel(engine.dartExecutor.binaryMessenger, "com.alan.thorCompanion/batteryAlerts").setMethodCallHandler { call, result ->
             val manager = getSystemService(android.app.NotificationManager::class.java)
@@ -56,6 +97,7 @@ class MainActivity : FlutterActivity() {
             } else result.notImplemented()
         }
         MethodChannel(engine.dartExecutor.binaryMessenger, "com.alan.thorCompanion/screenshots").setMethodCallHandler { call, result ->
+            if (call.method == "saveVideo") {saveRecording(call,result);return@setMethodCallHandler}
             if (call.method == "keepAwake") {
                 if (call.arguments == true) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)

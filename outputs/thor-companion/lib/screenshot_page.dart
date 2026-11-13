@@ -7,6 +7,7 @@ import 'diagnostics.dart';
 import 'screenshot_transfer.dart';
 import 'ui.dart';
 import 'network_link.dart';
+import 'recording_panel.dart';
 
 Future<Uint8List> composeScreenshot(Uint8List container, int mode) async {
   final images = screenshotImages(container, mode);
@@ -69,7 +70,8 @@ class _ScreenshotPageState extends State<ScreenshotPage> {
     );
   }
 
-  int mode = 0;
+  int mode = 0, captureKind = 0;
+  bool videoBusy = false;
   bool busy = false, saved = false, cancelled = false;
   double? progress;
   int lastProgressPaint = 0;
@@ -208,18 +210,18 @@ class _ScreenshotPageState extends State<ScreenshotPage> {
           network.status!['capture'] == true &&
           !c.isDemo;
       return Scaffold(
-        appBar: AppBar(title: const Text('Screenshots')),
+        appBar: AppBar(title: const Text('Screen capture')),
         body: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Text(
-                'Capture the Thor’s screens and save to Photos on this device.',
+                'Save screenshots or recordings from your Thor to Photos.',
                 style: TextStyle(fontSize: 16),
               ),
               const SizedBox(height: 16),
-              NetworkConnectionCard(link: network, disabled: busy),
+              NetworkConnectionCard(link: network, disabled: busy || videoBusy),
               if (network.ready &&
                   (network.status!['helper'] != true ||
                       network.status!['wifi'] != true)) ...[
@@ -235,74 +237,104 @@ class _ScreenshotPageState extends State<ScreenshotPage> {
               const SizedBox(height: 20),
               SegmentedButton<int>(
                 segments: const [
-                  ButtonSegment(value: 0, label: Text('Top')),
-                  ButtonSegment(value: 1, label: Text('Bottom')),
-                  ButtonSegment(value: 2, label: Text('Both')),
-                ],
-                selected: {mode},
-                onSelectionChanged: busy
-                    ? null
-                    : (v) => setState(() {
-                        mode = v.single;
-                        image = null;
-                        saved = false;
-                        error = null;
-                        status = '';
-                      }),
-              ),
-              const SizedBox(height: 12),
-              if (mode == 2)
-                const Text(
-                  'Top above bottom, centered at their original resolution.',
-                  style: TextStyle(fontSize: 14),
-                ),
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: enabled && !busy ? capture : null,
-                icon: const Icon(Icons.screenshot_monitor),
-                label: const Text('Capture & save'),
-              ),
-              if (busy) ...[
-                const SizedBox(height: 16),
-                LinearProgressIndicator(value: progress),
-                const SizedBox(height: 8),
-                Text(
-                  progress == null
-                      ? status
-                      : 'Receiving ${(progress! * 100).round()}% over Wi-Fi',
-                ),
-                TextButton(
-                  onPressed: () {
-                    cancelled = true;
-                    network.cancel();
-                  },
-                  child: const Text('Cancel transfer'),
-                ),
-              ],
-              if (error != null) ...[
-                const SizedBox(height: 16),
-                notice('Screenshot', error!, warning: true),
-              ],
-              if (saved) ...[const SizedBox(height: 16), Text(status)],
-              if (image != null) ...[
-                const SizedBox(height: 20),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.memory(image!, fit: BoxFit.contain),
-                ),
-                if (!saved && !busy) ...[
-                  const SizedBox(height: 12),
-                  OutlinedButton(
-                    onPressed: retrySave,
-                    child: const Text('Save to Photos'),
+                  ButtonSegment(
+                    value: 0,
+                    icon: Icon(Icons.photo_camera_outlined),
+                    label: Text('Screenshot'),
+                  ),
+                  ButtonSegment(
+                    value: 1,
+                    icon: Icon(Icons.videocam_outlined),
+                    label: Text('Video'),
                   ),
                 ],
-              ],
-              const SizedBox(height: 16),
-              const Text(
-                'Screenshots require a Wi-Fi connection. Keep the Thor open and unlocked. No Bluetooth image transfer or fallback is used. Images are held briefly in Thor memory and saved on this device only.',
-                style: TextStyle(fontSize: 14),
+                selected: {captureKind},
+                onSelectionChanged: busy || videoBusy
+                    ? null
+                    : (choice) => setState(() => captureKind = choice.single),
               ),
+              const SizedBox(height: 20),
+              if (captureKind == 1)
+                RecordingPanel(
+                  network: network,
+                  onBusyChanged: (value) {
+                    if (mounted && videoBusy != value) {
+                      setState(() => videoBusy = value);
+                    }
+                  },
+                ),
+              if (captureKind == 0) ...[
+                SegmentedButton<int>(
+                  segments: const [
+                    ButtonSegment(value: 0, label: Text('Top')),
+                    ButtonSegment(value: 1, label: Text('Bottom')),
+                    ButtonSegment(value: 2, label: Text('Both')),
+                  ],
+                  selected: {mode},
+                  onSelectionChanged: busy
+                      ? null
+                      : (v) => setState(() {
+                          mode = v.single;
+                          image = null;
+                          saved = false;
+                          error = null;
+                          status = '';
+                        }),
+                ),
+                const SizedBox(height: 12),
+                if (mode == 2)
+                  const Text(
+                    'Top above bottom, centered at their original resolution.',
+                    style: TextStyle(fontSize: 14),
+                  ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: enabled && !busy ? capture : null,
+                  icon: const Icon(Icons.screenshot_monitor),
+                  label: const Text('Capture & save'),
+                ),
+                if (busy) ...[
+                  const SizedBox(height: 16),
+                  LinearProgressIndicator(value: progress),
+                  const SizedBox(height: 8),
+                  Text(
+                    progress == null
+                        ? status
+                        : 'Receiving ${(progress! * 100).round()}% over Wi-Fi',
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      cancelled = true;
+                      network.cancel();
+                    },
+                    child: const Text('Cancel transfer'),
+                  ),
+                ],
+                if (error != null) ...[
+                  const SizedBox(height: 16),
+                  notice('Screenshot', error!, warning: true),
+                ],
+                if (saved) ...[const SizedBox(height: 16), Text(status)],
+                if (image != null) ...[
+                  const SizedBox(height: 20),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.memory(image!, fit: BoxFit.contain),
+                  ),
+                  if (!saved && !busy) ...[
+                    const SizedBox(height: 12),
+                    OutlinedButton(
+                      onPressed: retrySave,
+                      child: const Text('Save to Photos'),
+                    ),
+                  ],
+                ],
+                const SizedBox(height: 16),
+                const Text(
+                  'Screenshots use the encrypted network connection. Keep the Thor open and unlocked. Images are saved on this device.',
+                  style: TextStyle(fontSize: 14),
+                ),
+              ],
             ],
           ),
         ),

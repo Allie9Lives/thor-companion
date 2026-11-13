@@ -28,6 +28,7 @@ class ThorFileBridge(private val activity: Activity) {
  fun call(call: MethodCall,result: MethodChannel.Result) {
   try {when(call.method){
    "cacheDirectory" -> result.success(directory.path)
+   "iconCacheDirectory" -> { val icons=File(activity.cacheDir,"thor-app-icons");icons.mkdirs();result.success(icons.path) }
    "forgetConnection" -> {credential.delete();result.success(null)}
    "saveConnection" -> {
     val data=JSONObject(call.arguments as Map<*,*>).toString().toByteArray(Charsets.UTF_8)

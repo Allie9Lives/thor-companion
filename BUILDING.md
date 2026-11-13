@@ -1,20 +1,20 @@
-# Building Thor Monitor 0.14.3 and Thor Companion 0.14.0
+# Build from source
 
 ## Client
 
-The verified toolchain was Flutter 3.47.9 / Dart 3.13.7, JDK 17, Android compile SDK 37.0 and Xcode 26.5. See the [client README](outputs/thor-companion/README.md) for platform setup and signing details.
+The verified toolchain was Flutter 3.47.9 / Dart 3.13.7, JDK 17, Android compile SDK 37.0 and Xcode 26.5. 
 
 ```sh
 cd outputs/thor-companion
 flutter pub get
 flutter analyze
 flutter test
-flutter build apk --debug --target-platform android-arm64
+flutter build apk --release
 # Build platform targets sequentially, then configure your Xcode signing team:
 flutter build ios --release
 ```
 
-The exported Xcode project clears the local development-team setting. Choose your own team for Runner and the widget extension. Build caches and local SDK path files are not committed. If Xcode cannot resolve a cached permission-handler plugin, regenerate the iOS configuration and clear only this project's affected DerivedData/build cache before retrying.
+The exported Xcode project clears the local development-team setting. Choose your own team for Runner and the widget extension. Build caches and local SDK path files are not committed. 
 
 ## Host
 
@@ -31,3 +31,4 @@ python3 outputs/thor-monitor-prototype/build.py
 The `android-15` directory is the historical builder's name for its build-tools directory, not a request to use API 15. On a fresh checkout the builder generates a new local development signing key in ignored `work/thor-debug.p12` and writes `outputs/thor-monitor-test.apk`. Updating an existing installed host requires its original signing identity, which is intentionally not in Git. Do not overwrite an existing signing key.
 
 The host verifies vendored dependency checksums before building. Dependency notices and corresponding source archives are in `third_party/`. Python and Java test sources are under the host's `tests/`; device instrumentation is development-only and must not be shipped as the host.
+

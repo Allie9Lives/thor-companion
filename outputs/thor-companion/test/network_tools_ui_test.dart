@@ -27,7 +27,7 @@ void main() {
       'Find my Thor',
       'Open files',
       'Open keyboard',
-      'Open screenshots',
+      'Screen capture',
       'Connection health',
       'Battery insights',
     ];

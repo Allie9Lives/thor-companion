@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'companion_controller.dart';
 import 'file_transfer.dart';
 import 'ui.dart';
+import 'ftp_page.dart';
 
 class FilesPage extends StatefulWidget {
   const FilesPage({super.key, required this.controller});
@@ -228,7 +229,7 @@ class _FilesPageState extends State<FilesPage> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'In Thor Monitor, allow full shared-storage access to browse both drives from the top level, or choose specific folders. Link once over Bluetooth; the saved secure connection can then use Wi-Fi or Tailscale without Bluetooth.',
+                'Choose folders or allow shared-storage access in Thor Monitor. Link over Bluetooth once, then connect over Wi-Fi or VPN.',
               ),
               const SizedBox(height: 12),
               OutlinedButton(
@@ -251,7 +252,7 @@ class _FilesPageState extends State<FilesPage> {
                   enabled: !busy,
                   decoration: const InputDecoration(
                     labelText: 'Thor IP address or hostname',
-                    helperText: 'Use its Wi-Fi or Tailscale address.',
+                    helperText: 'Wi-Fi or VPN address',
                   ),
                 ),
                 if (connection!.hosts.length > 1)
@@ -276,6 +277,16 @@ class _FilesPageState extends State<FilesPage> {
               ],
             ],
           ),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => FtpServerPage(controller: widget.controller),
+            ),
+          ),
+          icon: const Icon(Icons.dns_outlined),
+          label: const Text('FTP server'),
         ),
         const SizedBox(height: 16),
         if (error != null) ...[

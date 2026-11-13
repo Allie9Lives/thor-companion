@@ -20,7 +20,7 @@ if args.enable_recovery:
 name = shell('run-as', 'com.alan.thormonitor', 'cat', 'files/control-socket')
 if not re.fullmatch(r'thor-controls-[a-f0-9]{32}', name):
     raise SystemExit('Open Thor Monitor once, then run this again.')
-uid = re.search(r'uid:(\d+)', shell('cmd', 'package', 'list', 'packages', '-U', 'com.alan.thormonitor'))
+uid = re.search(r'^package:com\.alan\.thormonitor uid:(\d+)\s*$', shell('cmd', 'package', 'list', 'packages', '-U', 'com.alan.thormonitor'), re.MULTILINE)
 if not uid:
     raise SystemExit('Thor Monitor is not installed.')
 apk = shell('pm', 'path', 'com.alan.thormonitor').removeprefix('package:')

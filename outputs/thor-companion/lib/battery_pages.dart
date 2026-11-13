@@ -186,7 +186,7 @@ class _BatteryInsightsPageState extends State<BatteryInsightsPage> {
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 32),
                       child: Text(
-                        'History appears as Thor Monitor records readings. Connect to your Thor and sync to fill recorded gaps.',
+                        'No history yet. Keep monitoring on, then sync.',
                       ),
                     )
                   else ...[
@@ -205,9 +205,21 @@ class _BatteryInsightsPageState extends State<BatteryInsightsPage> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    const Text(
-                      'Blue segments show connection to power. Shading marks CPU keep-alive pauses, not proof that Android slept for the entire interval.',
-                      style: TextStyle(fontSize: 14),
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 8,
+                      children: [
+                        _HistoryLegend(label: 'Battery level', color: p.accent),
+                        const _HistoryLegend(
+                          label: 'Plugged in',
+                          color: Colors.blue,
+                        ),
+                        _HistoryLegend(
+                          label: 'Battery saving',
+                          color: p.accent,
+                          shaded: true,
+                        ),
+                      ],
                     ),
                   ],
                 ],
@@ -314,13 +326,49 @@ class _BatteryInsightsPageState extends State<BatteryInsightsPage> {
             ),
             const SizedBox(height: 16),
             const Text(
-              'History is recorded on the Thor while monitoring is running, including when this phone is disconnected. Gaps are left blank. Usage and screen time are based on recorded samples, not per-app energy measurements. Controller capacity readings are estimates; no maximum-capacity percentage is inferred.',
+              'History is recorded on the Thor while monitoring is running, including when this phone is disconnected.',
               style: TextStyle(fontSize: 14),
             ),
           ],
         ),
       );
     },
+  );
+}
+
+class _HistoryLegend extends StatelessWidget {
+  const _HistoryLegend({
+    required this.label,
+    required this.color,
+    this.shaded = false,
+  });
+  final String label;
+  final Color color;
+  final bool shaded;
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Container(
+        width: 16,
+        height: shaded ? 12 : 3,
+        decoration: BoxDecoration(
+          color: shaded ? color.withValues(alpha: .12) : color,
+          borderRadius: BorderRadius.circular(2),
+          border: shaded
+              ? Border.all(color: color.withValues(alpha: .35))
+              : null,
+        ),
+      ),
+      const SizedBox(width: 6),
+      Text(
+        label,
+        style: TextStyle(
+          fontSize: 13,
+          color: AppPalette.of(context).secondaryText,
+        ),
+      ),
+    ],
   );
 }
 

@@ -33,6 +33,15 @@ private final class ThorAlertDelegate: NSObject, UNUserNotificationCenterDelegat
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     UNUserNotificationCenter.current().delegate = thorAlertDelegate
+    let aboutRegistrar = engineBridge.pluginRegistry.registrar(forPlugin: "ThorAboutBridge")!
+    let aboutChannel = FlutterMethodChannel(name: "com.alan.thorCompanion/about", binaryMessenger: aboutRegistrar.messenger())
+    aboutChannel.setMethodCallHandler { call, result in
+      switch call.method {
+      case "version": result(["version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "", "build": Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""])
+      case "github": UIApplication.shared.open(URL(string: "https://github.com/Allie9Lives")!, options: [:]) { opened in if opened { result(nil) } else { result(FlutterError(code:"open_link",message:"Couldn’t open GitHub.",details:nil)) } }
+      default: result(FlutterMethodNotImplemented)
+      }
+    }
     let filesRegistrar = engineBridge.pluginRegistry.registrar(forPlugin: "ThorFilesBridge")!
     let filesChannel = FlutterMethodChannel(name: "com.alan.thorCompanion/files", binaryMessenger: filesRegistrar.messenger())
     filesChannel.setMethodCallHandler { [weak self] call, result in self?.filesCall(call, result: result) }
@@ -69,7 +78,8 @@ private final class ThorAlertDelegate: NSObject, UNUserNotificationCenterDelegat
     }
     let screenshotRegistrar = engineBridge.pluginRegistry.registrar(forPlugin: "ThorScreenshotBridge")!
     let screenshotChannel = FlutterMethodChannel(name: "com.alan.thorCompanion/screenshots", binaryMessenger: screenshotRegistrar.messenger())
-    screenshotChannel.setMethodCallHandler { call, result in
+    screenshotChannel.setMethodCallHandler { [weak self] call, result in
+      if call.method == "saveVideo" { self?.saveRecording(call, result: result); return }
       if call.method == "keepAwake" {
         UIApplication.shared.isIdleTimerDisabled = call.arguments as? Bool ?? false
         result(nil); return
@@ -215,6 +225,10 @@ extension AppDelegate: UIDocumentPickerDelegate {
       try FileManager.default.createDirectory(at: transferDirectory, withIntermediateDirectories: true)
       switch call.method {
       case "cacheDirectory": result(transferDirectory.path)
+      case "iconCacheDirectory":
+        let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("thor-app-icons", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        result(directory.path)
       case "forgetConnection": SecItemDelete(query as CFDictionary); result(nil)
       case "saveConnection":
         guard let args = call.arguments as? [String: Any] else { throw NSError(domain:"ThorFiles",code:1) }
@@ -272,4 +286,52 @@ extension AppDelegate: UIDocumentPickerDelegate {
     }
   }
   private func cleanupExports() { if let urls = try? FileManager.default.contentsOfDirectory(at:transferDirectory,includingPropertiesForKeys:[.isDirectoryKey]) { for url in urls { if (try? url.resourceValues(forKeys:[.isDirectoryKey]).isDirectory) == true { try? FileManager.default.removeItem(at:url) } } } }
+}
+
+extension AppDelegate {
+  private static func recordingError(_ error: Error) -> String {
+    let value = error as NSError
+    return "\(value.domain) \(value.code)" + ((value.userInfo[NSUnderlyingErrorKey] as? NSError).map { " / " + recordingError($0) } ?? "")
+  }
+  private func saveRecording(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let args = call.arguments as? [String: Any], let paths = args["paths"] as? [String],
+          let offsets = args["offsets"] as? [NSNumber], let screen = args["screen"] as? String, let fps = args["fps"] as? Int, [30, 60].contains(fps),
+          ["top", "bottom", "both"].contains(screen), paths.count == (screen == "both" ? 2 : 1),
+          paths.count == offsets.count else {
+      result(FlutterError(code: "recording", message: "Invalid recording files.", details: nil)); return
+    }
+    let sources = paths.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().standardizedFileURL }
+    let root = transferDirectory.resolvingSymlinksInPath().standardizedFileURL.path + "/"
+    guard sources.allSatisfy({ url in
+      guard url.path.hasPrefix(root), url.pathExtension == "mp4",
+            let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+            values.isRegularFile == true, let size = values.fileSize else { return false }
+      return size >= 128 && size <= 512 * 1024 * 1024
+    }) else { result(FlutterError(code: "recording", message: "Recording cache is unavailable. Download again.", details: nil)); return }
+    PHPhotoLibrary.requestAuthorization(for: .addOnly) { authorization in
+      guard authorization == .authorized || authorization == .limited else {
+        DispatchQueue.main.async { result(FlutterError(code: "photos_permission", message: "Allow Thor Companion to add captures in iPhone Settings, then tap Save to Photos.", details: nil)) }; return
+      }
+      DispatchQueue.global(qos: .userInitiated).async {
+        ThorVideoComposer.compose(sources, offsets: offsets.map { $0.doubleValue }, fps: fps, directory: self.transferDirectory) { exported in
+          switch exported {
+          case .failure(let error): DispatchQueue.main.async { result(FlutterError(code: "recording_export", message: "Could not combine screens. The Thor copy is kept; try Save to Photos again.", details: Self.recordingError(error))) }
+          case .success(let output):
+            PHPhotoLibrary.shared().performChanges({
+              let asset = PHAssetCreationRequest.forAsset()
+              let options = PHAssetResourceCreationOptions()
+              options.originalFilename = "Thor-\(screen)-\(Int(Date().timeIntervalSince1970)).mp4"
+              asset.addResource(with: .video, fileURL: output, options: options)
+            }) { success, error in
+              if !sources.contains(output) { try? FileManager.default.removeItem(at: output) }
+              DispatchQueue.main.async {
+                if success { result(nil) }
+                else { result(FlutterError(code: "recording_save", message: "Could not add the recording to Photos. The Thor copy is kept; try Save to Photos again.", details: error.map { Self.recordingError($0) })) }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 }

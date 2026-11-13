@@ -11,6 +11,7 @@ import 'dashboard.dart';
 import 'controls.dart';
 import 'ui.dart';
 import 'settings_sheet.dart';
+import 'about_page.dart';
 import 'battery_pages.dart';
 import 'files_page.dart';
 import 'connection_health_page.dart';
@@ -202,6 +203,9 @@ class _CompanionHomeState extends State<CompanionHome>
             child: RefreshIndicator(
               onRefresh: c.refresh,
               child: ListView(
+                key: PageStorageKey(
+                  c.stats == null ? 'setup-scroll' : 'tab-scroll-$tab',
+                ),
                 padding: EdgeInsets.fromLTRB(24, 18, 24, 24),
                 children: [
                   Row(
@@ -284,14 +288,23 @@ class _CompanionHomeState extends State<CompanionHome>
                     ),
                   ],
                   SizedBox(height: 26),
-                  if (c.stats == null)
-                    setup()
-                  else if (tab == 0)
-                    Dashboard(controller: c)
-                  else if (tab == 1)
-                    DevicePage(controller: c)
-                  else
-                    ControlsPage(controller: c),
+                  TweenAnimationBuilder<double>(
+                    key: ValueKey(c.stats == null ? 'setup' : 'tab-$tab'),
+                    tween: Tween(begin: .94, end: 1),
+                    duration: MediaQuery.disableAnimationsOf(context)
+                        ? Duration.zero
+                        : const Duration(milliseconds: 160),
+                    curve: Curves.easeOut,
+                    builder: (context, opacity, child) =>
+                        Opacity(opacity: opacity, child: child),
+                    child: c.stats == null
+                        ? setup()
+                        : tab == 0
+                        ? Dashboard(controller: c)
+                        : tab == 1
+                        ? DevicePage(controller: c)
+                        : ControlsPage(controller: c),
+                  ),
                 ],
               ),
             ),
@@ -551,6 +564,10 @@ class _CompanionHomeState extends State<CompanionHome>
               );
             case 'help':
               help();
+            case 'about':
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const AboutPage()),
+              );
             case 'credits':
               showDialog<void>(
                 context: context,

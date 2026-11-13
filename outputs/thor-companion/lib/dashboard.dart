@@ -1,3 +1,5 @@
+import 'focused_apps.dart';
+import 'apps_page.dart';
 import 'package:flutter/material.dart';
 import 'companion_controller.dart';
 import 'telemetry.dart';
@@ -102,6 +104,10 @@ class Dashboard extends StatelessWidget {
         ),
         SizedBox(height: 12),
         performance(),
+        if (c.activity != null) ...[
+          const SizedBox(height: 12),
+          focusedAppsCard(),
+        ],
         SizedBox(height: 12),
         surface(
           copyText: statsForClipboard(c, StatsSection.internal),
@@ -269,10 +275,11 @@ class Dashboard extends StatelessWidget {
               builder: (context, box) {
                 final showGauge =
                     box.maxWidth >= 280 &&
-                    MediaQuery.textScalerOf(context).scale(16) <= 24;
+                    MediaQuery.textScalerOf(context).scale(16) <= 20;
                 return Row(
                   children: [
                     Expanded(
+                      flex: showGauge ? 2 : 1,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -292,7 +299,7 @@ class Dashboard extends StatelessWidget {
                               letterSpacing: -1,
                             ),
                           ),
-                          SizedBox(height: 4),
+                          SizedBox(height: 8),
                           Text(s.chargingLabel, style: TextStyle(fontSize: 16)),
                           Text(
                             s.powerSource,
@@ -304,30 +311,33 @@ class Dashboard extends StatelessWidget {
                         ],
                       ),
                     ),
-                    if (showGauge) ...[
-                      SizedBox(width: 12),
-                      SizedBox(
-                        width: 112,
-                        height: 112,
-                        child: CustomPaint(
-                          painter: BatteryRing(
-                            s.battery,
-                            color: p.accent,
-                            track: p.border,
-                            lowColor: p.warning,
-                          ),
-                          child: Center(
-                            child: Icon(
-                              s.statusCode == 2
-                                  ? Icons.bolt
-                                  : Icons.battery_std,
-                              size: 38,
+                    if (showGauge)
+                      Expanded(
+                        flex: 3,
+                        child: Center(
+                          child: SizedBox(
+                            key: const ValueKey('overview-battery-gauge'),
+                            width: (box.maxWidth * .45).clamp(126.0, 164.0),
+                            height: (box.maxWidth * .45).clamp(126.0, 164.0),
+                            child: CustomPaint(
+                              painter: BatteryRing(
+                                s.battery,
+                                color: p.accent,
+                                track: p.border,
+                                lowColor: p.warning,
+                              ),
+                              child: Center(
+                                child: Icon(
+                                  s.statusCode == 2
+                                      ? Icons.bolt
+                                      : Icons.battery_std,
+                                  size: 54,
+                                ),
+                              ),
                             ),
                           ),
                         ),
                       ),
-                      SizedBox(width: 20),
-                    ],
                   ],
                 );
               },
@@ -346,15 +356,17 @@ class Dashboard extends StatelessWidget {
                 Widget value(String label, String reading) => SizedBox(
                   width: width,
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Text(
                         label,
+                        textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 14, color: p.secondaryText),
                       ),
-                      SizedBox(height: 4),
+                      SizedBox(height: 8),
                       Text(
                         reading,
+                        textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.w500,
@@ -406,7 +418,7 @@ class Dashboard extends StatelessWidget {
 
   Widget performance() => Builder(
     builder: (context) {
-      final c = controller, s = controller.stats!, h = controller.hardware;
+      final s = controller.stats!, h = controller.hardware;
       final ram = s.ramUsedFraction(h?.ramBytes);
       final cpu = s.cpuWindowMs != null && s.cpuWindowMs! >= 1000
           ? s.cpuPercent
@@ -432,32 +444,6 @@ class Dashboard extends StatelessWidget {
             ),
             SizedBox(height: 18),
             usage('GPU', s.gpuPercent, model: h?.gpuName),
-            if (c.activity != null) ...[
-              const SizedBox(height: 18),
-              const Text(
-                'Focused apps',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-              ),
-              for (final a in (c.activity!['apps'] as List? ?? []))
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    '${a['d'] == 0 ? 'Top' : 'Bottom'} · ${a['name'] ?? a['p']}\n${a['cpu'] is num ? '${(a['cpu'] as num).toStringAsFixed(1)}% CPU · all cores' : 'CPU sampling…'}',
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                ),
-              if (c.activity!['lid'] is bool)
-                Text(
-                  c.activity!['lid'] == true
-                      ? 'Lid closed · ${(c.activity!['closed_s'] as num? ?? 0).toInt() ~/ 60} min'
-                      : 'Lid open',
-                  style: const TextStyle(fontSize: 14),
-                ),
-              const Text(
-                'Focused means current or last focused while asleep. GPU readings describe the whole device.',
-                style: TextStyle(fontSize: 14),
-              ),
-            ],
             SizedBox(height: 18),
             usage(
               'RAM',
@@ -466,6 +452,77 @@ class Dashboard extends StatelessWidget {
                   ? null
                   : '${capacity(h!.ramBytes! - s.ramAvailableBytes!, decimals: 1)} of ${capacity(h.ramBytes, decimals: 1)} used',
             ),
+          ],
+        ),
+      );
+    },
+  );
+
+  Widget focusedAppsCard() => Builder(
+    builder: (context) {
+      final c = controller;
+      return surface(
+        child: Column(
+          children: [
+            FocusedApps(
+              device: c.selected?.id,
+              apps: (c.activity?['apps'] as List? ?? [])
+                  .map((a) => Map<String, dynamic>.from(a as Map))
+                  .toList(),
+              interactive: c.stats?.interactive,
+              onOpenDrawer: (screen) => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) =>
+                      AppsPage(controller: c, initialTarget: screen),
+                ),
+              ),
+            ),
+            if (c.activity?['lid'] is bool) ...[
+              const SizedBox(height: 12),
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 7,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppPalette.of(context).accent.withValues(alpha: .09),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        c.activity!['lid'] == true
+                            ? Icons.unfold_less_rounded
+                            : Icons.unfold_more_rounded,
+                        size: 17,
+                        color: AppPalette.of(context).accent,
+                      ),
+                      const SizedBox(width: 7),
+                      Text(
+                        c.activity!['lid'] == true ? 'Lid closed' : 'Lid open',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      if (c.activity!['lid'] == true &&
+                          (c.activity!['closed_s'] as num? ?? 0) >= 60) ...[
+                        const SizedBox(width: 6),
+                        Text(
+                          '· ${(c.activity!['closed_s'] as num? ?? 0).toInt() ~/ 60} min',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppPalette.of(context).secondaryText,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       );

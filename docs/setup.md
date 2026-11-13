@@ -50,7 +50,10 @@ Choose these during setup, or return to them in the host settings later.
 
 | Feature | Setup |
 | --- | --- |
-| Wi-Fi controls, files and screenshots | Turn on **Wi-Fi access** on the Thor and allow **Local Network** on iPhone. Follow the Bluetooth linking prompt, then choose which folders to share. This won’t change Tailscale. |
+| Wi-Fi controls, files and screen capture | Turn on **Wi-Fi access** on the Thor and allow **Local Network** on iPhone. Follow the Bluetooth linking prompt, then choose which folders to share. Existing VPN settings are unchanged. |
+| Screen recording | Open **Controls → Screen capture → Video** on the phone. Choose a screen and quality, record, then **Stop & save**. iPhone also offers 30/60 FPS export. |
+| FTP server | Open **Files → FTP server** on the phone. Start it, then enter the connection details in an FTP client using **explicit TLS** and passive mode. |
+| App drawer | Tap a focused-screen box or **Open apps** in Controls. Open apps can be switched, moved or stopped. |
 | Phone keyboard | Open **Phone keyboard** in the host settings and follow the prompts. |
 | Find my Thor | Allow **Stop panel over apps** on the Thor to dismiss the sound over any app. |
 | Battery alerts | Open **gear → Battery notifications** on your phone, choose your alerts and send a test. Keep the app running in the background to receive them. |
@@ -67,7 +70,8 @@ By default, on trusted Wi-Fi, the Thor can sleep after **3 hours with screens of
 
 - **No readings:** Open Thor Monitor, start monitoring, then reconnect from the phone.
 - **Controls unavailable:** Open Recovery setup and retry; check for a wireless-debugging approval prompt.
-- **Screenshots or files won't connect:** Check Wi-Fi access and network reachability. Screenshots also need advanced controls and an open, unlocked Thor.
+- **Screenshots or files won't connect:** Check Wi-Fi access and network reachability. Screen capture also needs advanced controls and an open, unlocked Thor.
 - **Review permissions:** Use **gear → Review setup** on the Thor.
 
 [Back to downloads](../README.md) · [Sound credits](sound-credits.md)
+

@@ -53,7 +53,16 @@ run(build_tools / "aapt2", "link", "-I", android, "--manifest", project / "Andro
 with zipfile.ZipFile(build / "raw.apk", "a", compression=zipfile.ZIP_DEFLATED) as z:
     for dex in sorted((build / "dex").glob("*.dex")):z.write(dex,dex.name)
     for name,data in native:z.writestr(name,data)
-    for notice in sorted((project/"third_party").glob("LICENSE*")):z.write(notice,"assets/third-party/"+notice.name)
+    resources={}
+    for dependency in dependencies:
+        with zipfile.ZipFile(dependency) as source:
+            for name in source.namelist():
+                if not name.endswith(("/", ".class")) and not name.startswith("META-INF/"):
+                    data=source.read(name)
+                    if name in resources and resources[name]!=data:raise SystemExit("Conflicting dependency resource: "+name)
+                    resources[name]=data
+    for name,data in resources.items():z.writestr(name,data)
+    for notice in sorted(set((project/"third_party").glob("*LICENSE*")) | set((project/"third_party").glob("*NOTICE"))):z.write(notice,"assets/third-party/"+notice.name)
     z.write(project/"third_party/NOTICE.md","assets/third-party/NOTICE.md")
 run(build_tools / "zipalign", "-f", "4", build / "raw.apk", build / "aligned.apk")
 key = workspace / "work/thor-debug.p12"

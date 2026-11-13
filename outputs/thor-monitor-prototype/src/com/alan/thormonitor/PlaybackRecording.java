@@ -1,0 +1,43 @@
+package com.alan.thormonitor;
+
+import android.app.*;import android.content.*;import android.media.*;import android.os.*;import java.io.*;import java.lang.reflect.*;import java.nio.*;
+
+/** Dynamic playback mix (Android AudioPolicy; see Genymobile/scrcpy issue 4380).
+ * Bounded game/media playback capture. No microphone source or voice-communication mix. */
+final class PlaybackRecording {
+ private AudioRecord input;private MediaCodec encoder;private MediaMuxer output;private Object policy;private Class<?> policyClass;private HandlerThread callbacks;private Thread worker;
+ private volatile boolean stopping;private volatile Exception failure;private boolean muxing;private int track=-1;private long frames;final File file;long began;
+ private static Context shellContext()throws Exception{
+  if(Looper.getMainLooper()==null)Looper.prepareMainLooper();Class<?> thread=Class.forName("android.app.ActivityThread");Object instance=thread.getMethod("currentActivityThread").invoke(null);if(instance==null)instance=thread.getMethod("systemMain").invoke(null);
+  Context system=(Context)thread.getMethod("getSystemContext").invoke(instance);Context context=system.createPackageContext("com.android.shell",Context.CONTEXT_IGNORE_SECURITY);
+  Field application=thread.getDeclaredField("mInitialApplication");application.setAccessible(true);if(application.get(instance)==null)application.set(instance,Instrumentation.newApplication(Application.class,context));return context;
+ }
+ PlaybackRecording(File file)throws Exception{this.file=file;try{
+  Context context=shellContext();callbacks=new HandlerThread("ThorPlaybackPolicy");callbacks.start();
+  AudioFormat format=new AudioFormat.Builder().setSampleRate(48000).setEncoding(AudioFormat.ENCODING_PCM_16BIT).setChannelMask(AudioFormat.CHANNEL_IN_STEREO).build();
+  Class<?> rule=Class.forName("android.media.audiopolicy.AudioMixingRule"),builder=Class.forName(rule.getName()+"$Builder");Object rules=builder.getConstructor().newInstance();builder.getMethod("setTargetMixRole",int.class).invoke(rules,rule.getField("MIX_ROLE_PLAYERS").getInt(null));
+  for(int usage:new int[]{AudioAttributes.USAGE_MEDIA,AudioAttributes.USAGE_GAME})builder.getMethod("addMixRule",int.class,Object.class).invoke(rules,rule.getField("RULE_MATCH_ATTRIBUTE_USAGE").getInt(null),new AudioAttributes.Builder().setUsage(usage).build());
+  Object matching=builder.getMethod("build").invoke(rules);Class<?> mix=Class.forName("android.media.audiopolicy.AudioMix"),mixBuilder=Class.forName(mix.getName()+"$Builder");Object mb=mixBuilder.getConstructor(rule).newInstance(matching);mixBuilder.getMethod("setFormat",AudioFormat.class).invoke(mb,format);mixBuilder.getMethod("setRouteFlags",int.class).invoke(mb,mix.getField("ROUTE_FLAG_LOOP_BACK_RENDER").getInt(null));Object configured=mixBuilder.getMethod("build").invoke(mb);
+  policyClass=Class.forName("android.media.audiopolicy.AudioPolicy");Class<?> pb=Class.forName(policyClass.getName()+"$Builder");Object p=pb.getConstructor(Context.class).newInstance(context);pb.getMethod("setLooper",Looper.class).invoke(p,callbacks.getLooper());pb.getMethod("addMix",mix).invoke(p,configured);policy=pb.getMethod("build").invoke(p);
+  Method register=AudioManager.class.getDeclaredMethod("registerAudioPolicyStatic",policyClass);register.setAccessible(true);if(((Number)register.invoke(null,policy)).intValue()!=0)throw new IOException("Playback capture permission unavailable");
+  input=(AudioRecord)policyClass.getMethod("createAudioRecordSink",mix).invoke(policy,configured);if(input==null||input.getState()!=AudioRecord.STATE_INITIALIZED)throw new IOException("Playback audio unavailable");
+  MediaFormat aac=MediaFormat.createAudioFormat("audio/mp4a-latm",48000,2);aac.setInteger(MediaFormat.KEY_AAC_PROFILE,2);aac.setInteger(MediaFormat.KEY_BIT_RATE,160000);encoder=MediaCodec.createEncoderByType("audio/mp4a-latm");encoder.configure(aac,null,null,MediaCodec.CONFIGURE_FLAG_ENCODE);encoder.start();output=new MediaMuxer(file.getPath(),MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
+  input.startRecording();began=SystemClock.elapsedRealtime();worker=new Thread(this::encode,"ThorPlaybackAudio");worker.start();
+ }catch(Exception e){release();throw new IOException("Game audio capture could not start",e);}}
+ private void encode(){try{
+  MediaCodec.BufferInfo info=new MediaCodec.BufferInfo();boolean ended=false,eosQueued=false;long deadline=0;
+  while(!ended){int slot=eosQueued?-1:encoder.dequeueInputBuffer(10000);if(slot>=0){ByteBuffer bytes=encoder.getInputBuffer(slot);bytes.clear();int count=stopping?0:input.read(bytes,Math.min(4096,bytes.capacity()),AudioRecord.READ_NON_BLOCKING);if(count<0&&!stopping)throw new IOException("Audio capture stopped");if(count<0)count=0;long pts=frames*1000000/48000;frames+=count/4;int flags=stopping?MediaCodec.BUFFER_FLAG_END_OF_STREAM:0;encoder.queueInputBuffer(slot,0,count,pts,flags);if(stopping&&deadline==0){eosQueued=true;deadline=SystemClock.elapsedRealtime()+2500;}}
+   int index;while((index=encoder.dequeueOutputBuffer(info,1000))>=0){ByteBuffer data=encoder.getOutputBuffer(index);if((info.flags&MediaCodec.BUFFER_FLAG_CODEC_CONFIG)==0&&info.size>0){if(!muxing)throw new IOException("Audio encoder format missing");data.position(info.offset);data.limit(info.offset+info.size);output.writeSampleData(track,data,info);}ended=(info.flags&MediaCodec.BUFFER_FLAG_END_OF_STREAM)!=0;encoder.releaseOutputBuffer(index,false);if(ended)break;}
+   if(index==MediaCodec.INFO_OUTPUT_FORMAT_CHANGED&&!muxing){track=output.addTrack(encoder.getOutputFormat());output.start();muxing=true;}
+   if(deadline>0&&SystemClock.elapsedRealtime()>deadline)throw new IOException("Audio encoder timed out");if(!stopping)Thread.sleep(4);
+  }
+ }catch(Exception e){failure=e;}finally{release();}}
+ synchronized void stop()throws Exception{if(worker==null)return;stopping=true;try{worker.join(3500);}catch(InterruptedException e){Thread.currentThread().interrupt();throw e;}if(worker.isAlive())throw new IOException("Audio recording did not finish");worker=null;if(failure!=null)throw failure;if(file.length()<128)throw new IOException("Audio recording is empty");}
+ private void release(){if(input!=null){try{input.release();}catch(Exception ignored){}input=null;}if(encoder!=null){try{encoder.stop();}catch(Exception ignored){}try{encoder.release();}catch(Exception ignored){}encoder=null;}if(output!=null){try{if(muxing)output.stop();}catch(Exception e){failure=e;}try{output.release();}catch(Exception ignored){}output=null;}if(policy!=null&&policyClass!=null){try{Method unregister=AudioManager.class.getDeclaredMethod("unregisterAudioPolicyAsyncStatic",policyClass);unregister.setAccessible(true);unregister.invoke(null,policy);}catch(Exception ignored){}policy=null;}if(callbacks!=null){callbacks.quitSafely();callbacks=null;}}
+ static void attach(File video,File audio,long offsetMs,long durationMs)throws Exception{
+  File temporary=new File(video.getPath()+".mux");MediaExtractor v=new MediaExtractor(),a=new MediaExtractor();MediaMuxer mux=null;boolean started=false;
+  try(FileInputStream vf=new FileInputStream(video);FileInputStream af=new FileInputStream(audio)){v.setDataSource(vf.getFD());a.setDataSource(af.getFD());mux=new MediaMuxer(temporary.getPath(),MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);int vi=-1,ai=-1;for(int i=0;i<v.getTrackCount();i++)if(v.getTrackFormat(i).getString(MediaFormat.KEY_MIME).startsWith("video/")){v.selectTrack(i);vi=mux.addTrack(v.getTrackFormat(i));break;}for(int i=0;i<a.getTrackCount();i++)if(a.getTrackFormat(i).getString(MediaFormat.KEY_MIME).startsWith("audio/")){a.selectTrack(i);ai=mux.addTrack(a.getTrackFormat(i));break;}if(vi<0||ai<0)throw new IOException("Missing recording tracks");mux.start();started=true;copy(v,mux,vi,0,durationMs*1000);copy(a,mux,ai,Math.max(0,offsetMs)*1000,durationMs*1000);mux.stop();started=false;mux.release();mux=null;if(!temporary.renameTo(video))throw new IOException("Could not attach audio");
+  }finally{v.release();a.release();if(mux!=null){try{if(started)mux.stop();}catch(Exception ignored){}mux.release();}temporary.delete();}
+ }
+ private static void copy(MediaExtractor source,MediaMuxer target,int track,long skip,long duration)throws Exception{ByteBuffer bytes=ByteBuffer.allocateDirect(4*1024*1024);MediaCodec.BufferInfo info=new MediaCodec.BufferInfo();while(true){long time=source.getSampleTime();if(time<0||time-skip>duration)break;if(time>=skip){bytes.clear();int n=source.readSampleData(bytes,0);if(n<0)break;if(n>bytes.capacity())throw new IOException("Recording sample too large");info.set(0,n,time-skip,source.getSampleFlags()&MediaCodec.BUFFER_FLAG_KEY_FRAME);target.writeSampleData(track,bytes,info);}if(!source.advance())break;}}
+}

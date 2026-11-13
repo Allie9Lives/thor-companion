@@ -6,6 +6,8 @@ import 'ui.dart';
 import 'keyboard_page.dart';
 import 'screenshot_page.dart';
 import 'files_page.dart';
+import 'ftp_page.dart';
+import 'apps_page.dart';
 import 'connection_health_page.dart';
 import 'battery_pages.dart';
 
@@ -292,12 +294,22 @@ class _ControlsPageState extends State<ControlsPage> {
                         () => _openTool(FilesPage(controller: c)),
                       ),
                       tool(
+                        'App drawer',
+                        Icons.apps_rounded,
+                        () => _openTool(AppsPage(controller: c)),
+                      ),
+                      tool(
+                        'FTP server',
+                        Icons.dns_outlined,
+                        () => _openTool(FtpServerPage(controller: c)),
+                      ),
+                      tool(
                         'Open keyboard',
                         Icons.keyboard_outlined,
                         () => _openTool(RemoteKeyboardPage(controller: c)),
                       ),
                       tool(
-                        'Open screenshots',
+                        'Screen capture',
                         Icons.screenshot_monitor,
                         () => _openTool(ScreenshotPage(controller: c)),
                       ),
@@ -423,10 +435,6 @@ class _ControlsPageState extends State<ControlsPage> {
                   60: '60 Hz',
                   120: '120 Hz',
                 }),
-                const Text(
-                  'Sets the display limit. Game frame rates depend on the game.',
-                  style: TextStyle(fontSize: 14),
-                ),
                 const SizedBox(height: 16),
                 choice('Fan', 'fan', c.controlNumber('fan'), const {
                   0: 'Off',
@@ -580,11 +588,10 @@ class _ControlsPageState extends State<ControlsPage> {
                       'Restore keep-alive · ${TimeOfDay(hour: (state.number('sleep_end') ?? 360) ~/ 60, minute: (state.number('sleep_end') ?? 360) % 60).format(context)}',
                     ),
                   ),
-                  Text(
-                    state.values['sleep_exact'] == true
-                        ? 'Scheduled on the Thor; the phone can be disconnected. Screens stay off.'
-                        : 'Allow Alarms & reminders on the Thor for precise restoration; otherwise Android may delay it.',
-                  ),
+                  if (state.values['sleep_exact'] != true)
+                    const Text(
+                      'Allow Alarms & reminders on the Thor to restore on time.',
+                    ),
                 ],
               ),
             ),

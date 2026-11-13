@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		10A163BEE79C94DACEA28339 /* ThorVideoComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00EFB09F04EA34AF0163F622 /* ThorVideoComposer.swift */; };
         A10000000000000000000001 /* positive */ = {isa = PBXBuildFile; fileRef = A10000000000000000000003; };
         A10000000000000000000002 /* warning */ = {isa = PBXBuildFile; fileRef = A10000000000000000000004; };
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
@@ -50,6 +51,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		00EFB09F04EA34AF0163F622 /* ThorVideoComposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThorVideoComposer.swift; sourceTree = "<group>"; };
         A10000000000000000000003 = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = Sounds/thor_positive.wav; sourceTree = "<group>"; };
         A10000000000000000000004 = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = Sounds/thor_warning.wav; sourceTree = "<group>"; };
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
@@ -141,6 +143,7 @@
 				1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */,
 				1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */,
 				74858FAE1ED2DC5600515810 /* AppDelegate.swift */,
+				00EFB09F04EA34AF0163F622 /* ThorVideoComposer.swift */,
 				7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
@@ -310,6 +313,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
+				10A163BEE79C94DACEA28339 /* ThorVideoComposer.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
 				BA4C46F88BCF779706447D8F,
@@ -429,9 +433,9 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 28;
+				CURRENT_PROJECT_VERSION = 32;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 0.14.4;
+				MARKETING_VERSION = 0.16.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.alan.thorCompanion.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
@@ -446,9 +450,9 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 28;
+				CURRENT_PROJECT_VERSION = 32;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 0.14.4;
+				MARKETING_VERSION = 0.16.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.alan.thorCompanion.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
@@ -461,9 +465,9 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 28;
+				CURRENT_PROJECT_VERSION = 32;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 0.14.4;
+				MARKETING_VERSION = 0.16.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.alan.thorCompanion.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
@@ -637,12 +641,12 @@
     CODE_SIGN_ENTITLEMENTS = ThorBatteryExtension/ThorBatteryExtension.entitlements;
     CODE_SIGN_STYLE = Automatic;
     DEVELOPMENT_TEAM = "";
-    CURRENT_PROJECT_VERSION = 28;
+    CURRENT_PROJECT_VERSION = 32;
     GENERATE_INFOPLIST_FILE = NO;
     INFOPLIST_FILE = ThorBatteryExtension/Info.plist;
     IPHONEOS_DEPLOYMENT_TARGET = 16.0;
     LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks", );
-    MARKETING_VERSION = 0.14.4;
+    MARKETING_VERSION = 0.16.2;
     PRODUCT_BUNDLE_IDENTIFIER = com.alan.thorCompanion.ThorBattery;
     PRODUCT_NAME = "$(TARGET_NAME)";
     SDKROOT = iphoneos;
@@ -657,12 +661,12 @@
     CODE_SIGN_ENTITLEMENTS = ThorBatteryExtension/ThorBatteryExtension.entitlements;
     CODE_SIGN_STYLE = Automatic;
     DEVELOPMENT_TEAM = "";
-    CURRENT_PROJECT_VERSION = 28;
+    CURRENT_PROJECT_VERSION = 32;
     GENERATE_INFOPLIST_FILE = NO;
     INFOPLIST_FILE = ThorBatteryExtension/Info.plist;
     IPHONEOS_DEPLOYMENT_TARGET = 16.0;
     LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks", );
-    MARKETING_VERSION = 0.14.4;
+    MARKETING_VERSION = 0.16.2;
     PRODUCT_BUNDLE_IDENTIFIER = com.alan.thorCompanion.ThorBattery;
     PRODUCT_NAME = "$(TARGET_NAME)";
     SDKROOT = iphoneos;
@@ -677,12 +681,12 @@
     CODE_SIGN_ENTITLEMENTS = ThorBatteryExtension/ThorBatteryExtension.entitlements;
     CODE_SIGN_STYLE = Automatic;
     DEVELOPMENT_TEAM = "";
-    CURRENT_PROJECT_VERSION = 28;
+    CURRENT_PROJECT_VERSION = 32;
     GENERATE_INFOPLIST_FILE = NO;
     INFOPLIST_FILE = ThorBatteryExtension/Info.plist;
     IPHONEOS_DEPLOYMENT_TARGET = 16.0;
     LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks", );
-    MARKETING_VERSION = 0.14.4;
+    MARKETING_VERSION = 0.16.2;
     PRODUCT_BUNDLE_IDENTIFIER = com.alan.thorCompanion.ThorBattery;
     PRODUCT_NAME = "$(TARGET_NAME)";
     SDKROOT = iphoneos;

@@ -61,8 +61,8 @@ final class ThorControls {
             return new JSONObject(new String(response,"UTF-8")).put("peer_pid",socket.getPeerCredentials().getPid());
         }catch(Exception e){return new JSONObject();}
     }
-    boolean helperReady() { JSONObject status=helperStatus(context);return status.optBoolean("ok")&&status.optInt("protocol")>=5; }
-    static int outdatedHelperPid(Context c){JSONObject status=helperStatus(c);return status.optBoolean("ok")&&status.optInt("protocol")<5?status.optInt("peer_pid",0):0;}
+    boolean helperReady() { JSONObject status=helperStatus(context);return status.optBoolean("ok")&&status.optInt("protocol")>=9; }
+    static int outdatedHelperPid(Context c){JSONObject status=helperStatus(c);return status.optBoolean("ok")&&status.optInt("protocol")<9?status.optInt("peer_pid",0):0;}
     private boolean helper(String command,int value) {
         try(LocalSocket socket=new LocalSocket()) {
             socket.connect(new LocalSocketAddress(socketName(context),LocalSocketAddress.Namespace.ABSTRACT));
@@ -154,6 +154,17 @@ final class ThorControls {
             String key=j.getString("set"), target=j.optString("target","");
             Object raw=j.get("value");
             historyPage=null;
+            if(key.equals("apps")||key.equals("apps_open")) {
+                if(!(raw instanceof Number)||((Number)raw).doubleValue()!=((Number)raw).intValue())throw new IllegalArgumentException("App cursor required");historyPage=key.equals("apps_open")?AppCatalog.openPage(context,((Number)raw).intValue(),id):AppCatalog.page(context,((Number)raw).intValue(),id);return true;
+            }
+            if(key.equals("app_open")||key.equals("app_close")) {
+                if(!(raw instanceof String))throw new IllegalArgumentException("App identifier required");
+                AppCatalog.action(context,key,(String)raw,target);MonitorService.refreshFocusedApps();return true;
+            }
+            if(key.equals("ftp_start")||key.equals("ftp_stop")||key.equals("ftp_status")) {
+                if(!(raw instanceof Number)||((Number)raw).doubleValue()!=0)throw new IllegalArgumentException("Invalid FTP action");
+                historyPage=FtpAccess.command(context,key,id);return true;
+            }
             if(key.equals("network_session")) {
                 if(!(raw instanceof Number)||((Number)raw).doubleValue()!=1)throw new IllegalArgumentException("Invalid network session");
                 historyPage=FileAccess.networkSession(context,id);return true;

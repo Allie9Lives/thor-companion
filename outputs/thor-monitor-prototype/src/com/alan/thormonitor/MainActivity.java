@@ -32,6 +32,7 @@ public class MainActivity extends Activity {
     private java.util.List<BatterySample> historyCache=java.util.Collections.emptyList();private long historyReadAt;private String historyError;private java.util.List<long[]> sleepCache=java.util.Collections.emptyList();
     private int renderedPairVersion=0;
     private int bg,card,ink,muted,border,accent,onAccent;
+    private TextView ftpStatus;private Button ftpButton;
     private TextView status,health,controlsStatus,recoveryStatus,nearbyStatus,notificationStatus,batteryStatus;
     private EditText portField,codeField;
     private Button primary,backAction,nearbyAction,bluetoothAction,notificationAction,batteryAction;
@@ -96,7 +97,7 @@ public class MainActivity extends Activity {
     private void build(){
         renderedPairVersion=Recovery.pairVersion;
         prefs.edit().putInt("setup_screen",screen).putInt("setup_step",step).apply();
-        overview=null;insights=null;
+        overview=null;insights=null;ftpStatus=null;ftpButton=null;
         colors();status=health=controlsStatus=recoveryStatus=nearbyStatus=notificationStatus=batteryStatus=null;portField=codeField=null;primary=backAction=nearbyAction=bluetoothAction=notificationAction=batteryAction=null;
         getWindow().setStatusBarColor(bg);getWindow().setNavigationBarColor(bg);getWindow().getDecorView().setSystemUiVisibility(dark?0:View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         ScrollView scroll=new ScrollView(this);scroll.setBackgroundColor(bg);scroll.setClipToPadding(false);
@@ -150,13 +151,19 @@ public class MainActivity extends Activity {
         button(files,"Choose internal folder",false,()->chooseFolder(51));body(files,FileAccess.folder(this,"internal").isEmpty()?"No internal folder selected":"Internal folder selected");
         button(files,"Choose microSD folder",false,()->chooseFolder(52));body(files,FileAccess.folder(this,"sd").isEmpty()?"No microSD folder selected":"microSD folder selected");
         button(files,"Revoke network access",false,()->{FileAccess.revoke(this);build();});
+        LinearLayout ftp=disclosure("FTP server","wifi","Encrypted desktop transfers");
+        ftpStatus=body(ftp,FtpAccess.running()?"Running · encrypted FTP":"Stopped");
+        body(ftp,"Requires shared-storage access for Internal and microSD.");
+        ftpButton=button(ftp,FtpAccess.running()?"Stop FTP server":"Start FTP server",false,()->{try{FtpAccess.command(this,FtpAccess.running()?"ftp_stop":"ftp_start","local");build();}catch(Exception e){Toast.makeText(this,e.getMessage(),Toast.LENGTH_LONG).show();}});
+        button(ftp,"Connection details",false,()->{try{org.json.JSONObject j=FtpAccess.command(this,"ftp_status","local");if(!j.optBoolean("running")){Toast.makeText(this,"Start the FTP server first",Toast.LENGTH_LONG).show();return;}new AlertDialog.Builder(this).setTitle("FTP connection").setMessage("FTP · TLS/SSL Explicit encryption · Passive\n\nHost: "+j.optJSONArray("hosts")+"\nPort: "+j.optInt("port")+"\nUsername: thor\nPassword: "+j.optString("password")+"\n\nSHA-256: "+j.optString("pin")).setPositiveButton("Done",null).show();}catch(Exception e){Toast.makeText(this,"Connection details unavailable",Toast.LENGTH_LONG).show();}});
         LinearLayout restore=disclosure("Controls recovery","shield","Restore controls after a restart");recoveryStatus=body(restore,recoveryLabel());button(restore,"Recovery setup",false,()->openRecovery(false));
         LinearLayout keyboard=disclosure("Phone keyboard","keyboard","Type on the Thor from your phone");body(keyboard,"Enable Thor Remote Keyboard, then select it. Your usual keyboard remains available.");
         button(keyboard,"Enable keyboard",false,()->startActivity(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)));button(keyboard,"Select keyboard",false,()->getSystemService(android.view.inputmethod.InputMethodManager.class).showInputMethodPicker());
         button(page,"Review setup",false,()->{screen=1;step=0;build();});
         button(page,"Repair phone connection",false,this::repairPhone);
         Button forget=button(page,"Forget saved phone",false,()->{FileAccess.revoke(this);prefs.edit().remove("owner").putBoolean("monitor_wanted",false).apply();stopService(new Intent(this,MonitorService.class));Toast.makeText(this,"Phone forgotten. System Bluetooth pairing is unchanged.",Toast.LENGTH_LONG).show();handler.postDelayed(this::build,250);});forget.setTextColor(dark?0xFFFFA7A7:0xFFAD3030);
-        gap(page,16);body(page,"Thor Monitor 0.14.4");button(page,"Sound credits",false,this::soundCredits);
+        gap(page,16);button(page,"Sound credits",false,this::soundCredits);
+        LinearLayout about=disclosure("About","info","Version and credits");String version="";try{version=getPackageManager().getPackageInfo(getPackageName(),0).versionName;}catch(Exception ignored){}body(about,"Thor Monitor "+version);LinearLayout author=new LinearLayout(this);author.setGravity(Gravity.CENTER_VERTICAL);author.setPadding(0,dp(12),0,0);ImageView avatar=new ImageView(this);avatar.setImageResource(getResources().getIdentifier("author_avatar","drawable",getPackageName()));avatar.setScaleType(ImageView.ScaleType.CENTER_CROP);android.graphics.drawable.GradientDrawable circle=new android.graphics.drawable.GradientDrawable();circle.setShape(android.graphics.drawable.GradientDrawable.OVAL);circle.setColor(card);avatar.setBackground(circle);avatar.setClipToOutline(true);author.addView(avatar,new LinearLayout.LayoutParams(dp(56),dp(56)));LinearLayout identity=new LinearLayout(this);identity.setOrientation(LinearLayout.VERTICAL);identity.setPadding(dp(14),0,0,0);identity.addView(text("Allie Stark",18,true));TextView handle=text("@Allie9Lives",14,false);handle.setTextColor(muted);identity.addView(handle);author.addView(identity,new LinearLayout.LayoutParams(0,-2,1));about.addView(author);body(about,"© 2026 Allie Stark (Allie9Lives)");button(about,"GitHub · Allie9Lives",false,()->{try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/Allie9Lives")));}catch(Exception e){Toast.makeText(this,"Couldn’t open GitHub",Toast.LENGTH_SHORT).show();}});
     }
     private void repairPhone(){
         if(!nearby()){Toast.makeText(this,"Allow Bluetooth access first",Toast.LENGTH_LONG).show();return;}
@@ -208,7 +215,7 @@ public class MainActivity extends Activity {
     }
     private void setup(){
         String[] titles={"Choose your color","Connect with Bluetooth","Stay connected","Enable device controls","Optional features","Ready to connect"};
-        String[] subtitles={"Match the theme and icon. Change them anytime.","Pair with your phone for readings and controls.","Allow alerts and reliable background monitoring.","Set up fan, performance and power controls.","Add these now, or return to Settings later.","Your Thor is ready for its companion."};
+        String[] subtitles={"Match the theme and icon. Change them anytime.","Pair with your phone for readings and controls.","Allow alerts and reliable background monitoring.","Device controls, remote apps and screen capture.","Add these now, or return to Settings later.","Your Thor is ready for its companion."};
         String[] icons={"palette","bluetooth","bell","shield","options","phone"};setupHeading(titles[step],subtitles[step],icons[step]);
         if(step==0){
             LinearLayout colors=box(null);colorButtons(colors,null);
@@ -223,7 +230,7 @@ public class MainActivity extends Activity {
         }else if(step==3){
             LinearLayout b=box("Controls recovery");body(b,"Pair once on trusted Wi-Fi. Controls restore automatically after a restart.");gap(b,10);recoveryStatus=body(b,recoveryLabel());button(b,"Set up controls",true,()->openRecovery(true));gap(b,10);body(b,"Optional. Bluetooth monitoring works without this step.");
         }else if(step==4){
-            LinearLayout files=disclosure("Wi-Fi & files","wifi","Network controls, screenshots and file transfers");body(files,"Storage access is only needed for files. Choose folders, or allow shared storage.");
+            LinearLayout files=disclosure("Wi-Fi & files","wifi","Network controls, screenshots and file transfers");body(files,"Choose folders for phone transfers, or allow shared storage for both drives and desktop FTP access.");
             toggle(files,"Enable Wi-Fi access","Connect over Wi-Fi or your existing VPN.","files_enabled",false);
             button(files,"Shared storage permission",false,()->{prefs.edit().putBoolean("files_full",true).apply();startActivityForResult(new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,Uri.parse("package:"+getPackageName())),53);});
             button(files,"Choose internal folder",false,()->chooseFolder(51));button(files,"Choose microSD folder",false,()->chooseFolder(52));
@@ -321,6 +328,7 @@ public class MainActivity extends Activity {
         if(bluetoothAction!=null){bluetoothAction.setVisibility(nearby()&&!bluetooth()?View.VISIBLE:View.GONE);bluetoothAction.setEnabled(nearby()&&!bluetooth());bluetoothAction.setAlpha(bluetooth()?0.45f:1);bluetoothAction.setText(bluetooth()?"Bluetooth is on":"Turn on Bluetooth");}
         if(notificationAction!=null){boolean ready=granted(Manifest.permission.POST_NOTIFICATIONS);notificationAction.setVisibility(ready?View.GONE:View.VISIBLE);notificationAction.setEnabled(!ready);notificationAction.setAlpha(ready?0.45f:1);notificationAction.setText(ready?"Notifications allowed":"Allow notifications");}
         if(batteryAction!=null){batteryAction.setVisibility(unrestricted()?View.GONE:View.VISIBLE);batteryAction.setEnabled(!unrestricted());batteryAction.setAlpha(unrestricted()?0.45f:1);batteryAction.setText(unrestricted()?"Background access allowed":"Open battery permission");}
+        if(ftpStatus!=null)ftpStatus.setText(FtpAccess.running()?"Running · encrypted FTP":"Stopped");if(ftpButton!=null)ftpButton.setText(FtpAccess.running()?"Stop FTP server":"Start FTP server");
         if(nearbyStatus!=null)nearbyStatus.setText(nearby()?(bluetooth()?"✓ Bluetooth ready":"Turn on Bluetooth to continue"):"Allow Bluetooth access to continue");
         if(notificationStatus!=null)notificationStatus.setText(granted(Manifest.permission.POST_NOTIFICATIONS)?"✓ Allowed":"Not allowed");
         if(batteryStatus!=null)batteryStatus.setText(unrestricted()?"✓ Allowed":"Permission needed");

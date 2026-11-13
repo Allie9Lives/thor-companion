@@ -1,1 +1,3 @@
-The local-test certificate and private key are public, untrusted fixtures used only by loopback TLS tests. They are never bundled as application credentials or used for a real Thor connection. Real host TLS keys are generated in Android Keystore; phone connection credentials use Keychain/Keystore.
+# Thor Companion
+
+Android and iPhone client for Thor Monitor. See [BUILDING.md](../../BUILDING.md) for build instructions.
