@@ -36,8 +36,7 @@ struct BatteryStatusIcon: View {
       }
     }
     .accessibilityElement(children: .ignore)
-    .accessibilityLabel("Charging")
-    .accessibilityHidden(snapshot?.charging != true)
+    .accessibilityLabel(snapshot.map { "Battery \($0.percent) percent. \($0.charging ? "Charging." : "")" } ?? "Battery reading unavailable")
   }
 }
 
@@ -92,6 +91,36 @@ struct HomeBatteryView: View {
   }
 }
 
+struct RectangularBatteryView: View {
+  let entry: BatteryEntry
+  private var value: BatterySnapshot? { entry.snapshot }
+  var body: some View {
+    GeometryReader { box in
+      HStack(spacing: 6) {
+        BatteryStatusIcon(snapshot: value)
+          .font(.system(size: min(20, box.size.height * 0.4)))
+          .frame(width: value?.charging == true ? 56 : 32)
+        VStack(alignment: .leading, spacing: 2) {
+          Text(value.map { "Thor  \($0.percent)%" } ?? "Thor")
+            .font(.system(size: min(16, box.size.height * 0.3), weight: .semibold))
+            .lineLimit(1).minimumScaleFactor(0.75)
+          if let value {
+            Text("As of \(value.updatedAt.formatted(date: .omitted, time: .shortened))")
+              .font(.system(size: min(12, box.size.height * 0.23)))
+              .lineLimit(1).minimumScaleFactor(0.75)
+          } else {
+            Text("Open app")
+              .font(.system(size: min(12, box.size.height * 0.23)))
+              .lineLimit(1)
+          }
+        }.frame(maxWidth: .infinity, alignment: .leading)
+      }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+    }
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(value.map { "Thor battery \($0.percent) percent. \($0.charging ? "Charging." : "")" } ?? "Open Thor Companion and connect to receive a battery reading.")
+  }
+}
+
 struct BatteryWidgetView: View {
   let entry: BatteryEntry
   @Environment(\.widgetFamily) private var family
@@ -117,24 +146,10 @@ struct BatteryWidgetView: View {
     case .accessoryInline:
       HStack(spacing: 4) {
         BatteryStatusIcon(snapshot: value)
-        Text("Thor \(percent)\(fresh ? "" : " · last known")")
+        Text(value == nil ? "Thor · Open app" : "Thor \(percent)\(fresh ? "" : " · last known")")
       }
     default:
-      HStack(spacing: 8) {
-        BatteryStatusIcon(snapshot: value)
-          .font(.title2)
-        VStack(alignment: .leading, spacing: 1) {
-          Text("Thor  \(percent)").font(.headline)
-          if let value {
-            HStack(spacing: 3) {
-              Text("As of")
-              Text(value.updatedAt, style: .time)
-            }.font(.caption2).lineLimit(1).minimumScaleFactor(0.7)
-          } else {
-            Text("Open Thor Companion").font(.caption2)
-          }
-        }
-      }
+      RectangularBatteryView(entry: entry)
     }
   }
 }

@@ -22,10 +22,50 @@ struct BatterySnapshot: Codable, Hashable {
 }
 
 enum BatteryStore {
+  private static var installedDefaultGroup: String?
+
+  // A sideloading tool may rewrite signing entitlements without rewriting our
+  // custom Info.plist key. Ask Keychain Services for this install's real prefix.
+  static func sharedGroup(declared: String?, defaultGroup: String?) -> String? {
+    let suffix = "com.alan.thorCompanion.battery"
+    if let prefix = defaultGroup?.split(separator: ".").first,
+       prefix.count == 10, prefix.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber) }) {
+      return "\(prefix).\(suffix)"
+    }
+    return declared
+  }
+
+  private static func defaultGroup() -> String? {
+    if let installedDefaultGroup { return installedDefaultGroup }
+    let marker: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: "ThorBatterySigningPrefix", kSecAttrAccount as String: "installation"]
+    var lookup = marker
+    lookup[kSecReturnAttributes as String] = true
+    lookup[kSecMatchLimit as String] = kSecMatchLimitOne
+    var item: CFTypeRef?
+    var status = SecItemCopyMatching(lookup as CFDictionary, &item)
+    if status == errSecItemNotFound {
+      var add = marker
+      add[kSecValueData as String] = Data([1]) // Non-secret marker, no battery or credentials.
+      add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+      add[kSecReturnAttributes as String] = true
+      status = SecItemAdd(add as CFDictionary, &item)
+      if status == errSecDuplicateItem { status = SecItemCopyMatching(lookup as CFDictionary, &item) }
+    }
+    if status == errSecSuccess,
+       let attributes = item as? [String: Any],
+       let group = attributes[kSecAttrAccessGroup as String] as? String {
+      installedDefaultGroup = group
+      return group
+    }
+    return nil // Retry after unlock; don't cache a locked-keychain failure.
+  }
+
   private static var query: [String: Any] {
     var q: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: "ThorBatterySnapshot", kSecAttrAccount as String: "current"]
-    if let group = Bundle.main.object(forInfoDictionaryKey: "ThorSharedKeychainGroup") as? String {
+    let declared = Bundle.main.object(forInfoDictionaryKey: "ThorSharedKeychainGroup") as? String
+    if let group = sharedGroup(declared: declared, defaultGroup: defaultGroup()) {
       q[kSecAttrAccessGroup as String] = group
     }
     return q
@@ -64,7 +104,7 @@ enum BatteryStore {
 
   private static func failure(_ status: OSStatus) -> NSError {
     NSError(domain: "ThorBatteryStore", code: Int(status), userInfo: [
-      NSLocalizedDescriptionKey: SecCopyErrorMessageString(status, nil) as String? ?? "Battery cache unavailable"])
+      NSLocalizedDescriptionKey: status == errSecMissingEntitlement ? "The sideloaded app and widget cannot share battery data. Re-sign both with the same shared keychain group and keep the widget extension enabled." : (SecCopyErrorMessageString(status, nil) as String? ?? "Battery cache unavailable")])
   }
 }
 

@@ -28,6 +28,7 @@ public class MainActivity extends Activity {
     private SharedPreferences prefs;
     private int screen=0,step=0,recoveryReturn=0,renderedSetupStep=-1; // overview=0, setup=1, recovery=2, settings=3, insights=4
     private boolean dark,reading=false,repairing=false;
+    private OnboardingBackdrop onboardingBackdrop;
     private HostOverviewView overview;private HostBatteryInsightsView insights;
     private java.util.List<BatterySample> historyCache=java.util.Collections.emptyList();private long historyReadAt;private String historyError;private java.util.List<long[]> sleepCache=java.util.Collections.emptyList();
     private int renderedPairVersion=0;
@@ -120,6 +121,7 @@ public class MainActivity extends Activity {
     private void build(){
         View oldFocus=getCurrentFocus();final String focusedLabel=oldFocus instanceof TextView?((TextView)oldFocus).getText().toString():oldFocus!=null&&oldFocus.getContentDescription()!=null?oldFocus.getContentDescription().toString():"";
         final int previousScreen=renderedScreen;
+        if(onboardingBackdrop!=null)onboardingBackdrop.setRunning(false);onboardingBackdrop=null;
 
         renderedPairVersion=Recovery.pairVersion;
         prefs.edit().putInt("setup_screen",screen).putInt("setup_step",step).apply();
@@ -140,6 +142,7 @@ public class MainActivity extends Activity {
         if(screen==1 && primary!=null) {
             page.removeView(primary);if(backAction!=null)page.removeView(backAction);
             FrameLayout root=new FrameLayout(this);root.setBackgroundColor(bg);
+            onboardingBackdrop=new OnboardingBackdrop(this,accent);root.addView(onboardingBackdrop,new FrameLayout.LayoutParams(-1,-1));scroll.setBackgroundColor(Color.TRANSPARENT);
             scroll.setPadding(0,0,0,dp(16));scroll.setClipToPadding(true);frame.setPadding(0,0,0,dp(12));
             root.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
             LinearLayout footer=new LinearLayout(this);footer.setGravity(Gravity.CENTER_VERTICAL);footer.setPadding(0,dp(10),0,dp(16));footer.setBackgroundColor(bg);
@@ -310,16 +313,18 @@ public class MainActivity extends Activity {
         return "One-time pairing not completed";
     }
     private void recovery(){
-        page.addView(text("Controls recovery",28,true));body(page,"One-time setup on trusted Wi-Fi.");gap(page,18);
+        page.addView(text("Controls recovery",28,true));body(page,"Pair Thor Monitor with Android on this Thor. Phone pairing is separate.");gap(page,18);
         if(!Recovery.paired(this)||repairing){
-            LinearLayout grant=box("1. Wireless debugging");body(grant,"Turn on Wireless debugging. Allow this network if Android asks.");button(grant,"Open wireless debugging",false,this::openWireless);
-            LinearLayout pairing=box("2. Pair this Thor");body(pairing,"In Android settings, tap Pair device with pairing code. Enter the pairing port and code below.");
-            portField=field(pairing,"Pairing port",5,false);portField.setId(1001);codeField=field(pairing,"Six-digit pairing code",6,true);codeField.setId(1002);
-            button(pairing,"Pair controls",true,()->{String code=codeField.getText().toString().trim();int port=0;try{port=Integer.parseInt(portField.getText().toString().trim());}catch(Exception ignored){}Recovery.pair(this,port,code);codeField.setText("");});
+            LinearLayout grant=box("1. Wireless debugging");body(grant,"Open Android settings on the other screen. Tap the highlighted Wireless debugging option, then turn it on.");body(grant,"Allow your trusted network if Android asks.");button(grant,"Open wireless debugging",false,this::openWireless);
+            LinearLayout pairing=box("2. Pair this Thor");body(pairing,"On the other screen, tap Pair device with pairing code. Enter its port and six-digit code here.");body(pairing,"Port only — not the IP address. We fill it in when detected.");
+            portField=field(pairing,"Pairing port · port only",64,false);portField.setKeyListener(android.text.method.DigitsKeyListener.getInstance("0123456789.:[]"));portField.setHint("Port number, e.g. 37123");portField.setId(1001);codeField=field(pairing,"Six-digit pairing code",6,true);codeField.setId(1002);
+            button(pairing,"Pair controls",true,()->{String code=codeField.getText().toString().trim();int port=PairingInput.port(portField.getText().toString());Recovery.pair(this,port,code);if(port>0&&code.matches("[0-9]{6}"))codeField.setText("");});
         }else{LinearLayout paired=box("This Thor is paired");body(paired,"The pairing survives restarts and app updates.");button(paired,"Pair again",false,()->{repairing=true;build();});}
         LinearLayout readiness=box("Automatic recovery");recoveryStatus=body(readiness,recoveryLabel());
-        toggle(readiness,"Restore controls automatically","Runs while monitoring and Wi-Fi are available.","recover_controls",false);
-        button(readiness,"Retry now",false,()->Recovery.enable(this,true));body(readiness,"Unlock the Thor once after each restart.");
+        if(Recovery.paired(this)){
+            toggle(readiness,"Restore controls automatically","Runs while monitoring and Wi-Fi are available.","recover_controls",false);
+            button(readiness,"Retry now",false,()->Recovery.enable(this,true));body(readiness,"Unlock the Thor once after each restart.");
+        }else body(readiness,"Complete Pair controls above to enable automatic recovery.");
         LinearLayout help=disclosure("Setup help","shield","Developer options and pairing details");body(help,"Enable Developer options by tapping Build number seven times in Android settings. Use the port shown with the pairing code, not the connection port. Codes expire; request a new one if needed.");body(help,"When prompted, allow wireless debugging on your trusted network. Setup and recovery run on the Thor; no computer is required.");button(help,"Open wireless debugging",false,this::openWireless);
         button(page,recoveryReturn==1||!prefs.getBoolean("setup_complete",false)?"Back to setup":"Back to Overview",false,this::leaveRecovery);Recovery.watchPairing(this);
     }
@@ -327,18 +332,11 @@ public class MainActivity extends Activity {
     private void openWireless(){
         if(Recovery.permitted(this))try{Settings.Global.putInt(getContentResolver(),"adb_wifi_enabled",1);}catch(Exception ignored){}
         Recovery.watchPairing(this);
-        Intent intent=new Intent("android.settings.WIRELESS_DEBUGGING_SETTINGS");
-        if(intent.resolveActivity(getPackageManager())==null)intent=new Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS);
-        // The Thor can keep this form visible while the system pairing window is on its other screen.
-        try {
-            int bottom=-1;
-            for(Display display:getSystemService(android.hardware.display.DisplayManager.class).getDisplays()){
-                try{if(display.getDisplayId()!=0 && ((Integer)Display.class.getDeclaredMethod("getType").invoke(display))==1){bottom=display.getDisplayId();break;}}catch(Exception ignored){}
-            }
-            if(bottom<0){startActivity(intent);return;}
-            ActivityOptions options=ActivityOptions.makeBasic();options.setLaunchDisplayId(bottom);startActivity(intent,options.toBundle());}
-        catch(Exception e){startActivity(intent);}
+        if(portField!=null){View form=(View)portField.getParent();form.requestRectangleOnScreen(new Rect(0,0,form.getWidth(),form.getHeight()),true);}
+        try{boolean separate=RecoverySettingsNavigation.open(this);if(!separate)Toast.makeText(this,"Open Wireless debugging, then return here to enter the code.",Toast.LENGTH_LONG).show();}
+        catch(Exception e){Toast.makeText(this,"Open Android Settings → Developer options → Wireless debugging.",Toast.LENGTH_LONG).show();}
     }
+
     private int dialogTheme(){return dark?android.R.style.Theme_DeviceDefault_Dialog_Alert:android.R.style.Theme_DeviceDefault_Light_Dialog_Alert;}
     private void appearance(){
         String[] names={"System default","Light","Dark","Clear Purple","Rainbow"},values={"system","light","dark","clearPurple","rainbow"};
@@ -407,8 +405,8 @@ public class MainActivity extends Activity {
 
     private void chooseFolder(int request){Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION|Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION|Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);startActivityForResult(i,request);}
     @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==53||request==54){build();return;}if((request==51||request==52)&&result==RESULT_OK&&data!=null&&data.getData()!=null){try{FileAccess.choose(this,request==51?"internal":"sd",data.getData(),data.getFlags());build();}catch(Exception e){Toast.makeText(this,"Folder access was not granted",Toast.LENGTH_LONG).show();}}}
-    @Override public void onResume(){super.onResume();handler.removeCallbacks(refresh);handler.post(refresh);}
-    @Override public void onPause(){handler.removeCallbacks(refresh);super.onPause();}
+    @Override public void onResume(){super.onResume();if(onboardingBackdrop!=null)onboardingBackdrop.setRunning(true);handler.removeCallbacks(refresh);handler.post(refresh);}
+    @Override public void onPause(){if(onboardingBackdrop!=null)onboardingBackdrop.setRunning(false);handler.removeCallbacks(refresh);super.onPause();}
     @Override public void onDestroy(){handler.removeCallbacksAndMessages(null);reader.shutdownNow();Recovery.stopPairingDiscovery(this);super.onDestroy();}
     @Override public boolean dispatchKeyEvent(KeyEvent event){
         int code=event.getKeyCode();int direction=code==KeyEvent.KEYCODE_DPAD_DOWN?View.FOCUS_DOWN:code==KeyEvent.KEYCODE_DPAD_UP?View.FOCUS_UP:code==KeyEvent.KEYCODE_DPAD_LEFT?View.FOCUS_LEFT:code==KeyEvent.KEYCODE_DPAD_RIGHT?View.FOCUS_RIGHT:code==KeyEvent.KEYCODE_BUTTON_R1?View.FOCUS_FORWARD:code==KeyEvent.KEYCODE_BUTTON_L1?View.FOCUS_BACKWARD:0;

@@ -22,6 +22,10 @@ struct BatterySnapshotTests {
     }
     assert(BatterySnapshot(percent: -1, updatedAt: at, charging: false, connected: true).fraction == 0)
     assert(BatterySnapshot(percent: 101, updatedAt: at, charging: false, connected: true).fraction == 1)
+    assert(BatteryStore.sharedGroup(declared: "OLDSIGNER0.com.alan.thorCompanion.battery", defaultGroup: "NEWSIGNER1.com.alan.thorCompanion") == "NEWSIGNER1.com.alan.thorCompanion.battery")
+    assert(BatteryStore.sharedGroup(declared: "OLDSIGNER0.com.alan.thorCompanion.battery", defaultGroup: "NEWSIGNER1.com.alan.thorCompanion.ThorBatteryExtension") == "NEWSIGNER1.com.alan.thorCompanion.battery")
+    assert(BatteryStore.sharedGroup(declared: "OLDSIGNER0.com.alan.thorCompanion.battery", defaultGroup: nil) == "OLDSIGNER0.com.alan.thorCompanion.battery")
+    assert(BatteryStore.sharedGroup(declared: "OLDSIGNER0.com.alan.thorCompanion.battery", defaultGroup: "invalid.group") == "OLDSIGNER0.com.alan.thorCompanion.battery")
     print("Widget snapshot checks passed: recent, stale, disconnected, cache roundtrip, level symbols and ring fractions.")
   }
 }
