@@ -415,19 +415,48 @@ void main() {
     },
   );
   test(
-    'exceptional stale service cache preserves recovery instructions without a retry loop',
+    'stale service cache retries once then preserves recovery instructions',
     () async {
       fastRetries();
       ble.discoveryFailure = StaleServiceCache();
       await establish();
-      await Future<void>.delayed(const Duration(milliseconds: 1100));
-      expect(ble.connections, 1);
+      await until(() => ble.connections == 2);
+      ble.links.add(LinkState.connected);
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      expect(ble.connections, 2);
       expect(c.error, contains('service information is out of date'));
       ble.discoveryFailure = null;
       await c.connect(const NearbyThor('thor', 'Thor', -50));
       expect(c.stats?.battery, 69);
     },
   );
+  test('background refresh respects explicit Disconnect', () async {
+    await establish();
+    await c.disconnect();
+    final opens = ble.connections;
+    expect(await c.backgroundRefresh(), false);
+    expect(ble.connections, opens);
+  });
+  test(
+    'background refresh reads and publishes an existing connection',
+    () async {
+      await establish();
+      final count = c.receivedCount;
+      expect(await c.backgroundRefresh(), true);
+      expect(c.receivedCount, greaterThan(count));
+    },
+  );
+  test('transient stale services recover without restarting the app', () async {
+    fastRetries();
+    ble.discoveryFailure = StaleServiceCache();
+    await establish();
+    await until(() => ble.connections == 2);
+    ble.discoveryFailure = null;
+    ble.links.add(LinkState.connected);
+    await until(() => c.notificationsRequested);
+    expect(c.stats?.battery, 69);
+    expect(c.error, isNull);
+  });
   test(
     'iPhone background requests one native pending connection without retry timers',
     () async {

@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'ble_transport.dart';
 import 'companion_controller.dart';
@@ -16,6 +18,10 @@ class ConnectionHealthPage extends StatefulWidget {
 class _ConnectionHealthPageState extends State<ConnectionHealthPage> {
   late final NetworkLink network;
   bool previousControls = false;
+  String? backgroundStatus;
+  static const backgroundChannel = MethodChannel(
+    'com.alan.thorCompanion/backgroundRefresh',
+  );
   @override
   void initState() {
     super.initState();
@@ -23,6 +29,16 @@ class _ConnectionHealthPageState extends State<ConnectionHealthPage> {
     previousControls = c.controlsVisible;
     c.controlsVisible = false;
     network = NetworkLink(c);
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+      unawaited(
+        backgroundChannel
+            .invokeMethod<String>('status')
+            .then((value) {
+              if (mounted) setState(() => backgroundStatus = value);
+            })
+            .catchError((Object _) {}),
+      );
+    }
     unawaited(
       network.restore().then((_) {
         if (mounted && network.connection != null) network.check();
@@ -76,6 +92,9 @@ class _ConnectionHealthPageState extends State<ConnectionHealthPage> {
         'Last reading': c.freshness,
         'Readings received': '${c.receivedCount}',
         'Automatic reconnect': c.automaticReconnect ? 'Enabled' : 'Paused',
+        ...?(backgroundStatus == null
+            ? null
+            : {'Background App Refresh': backgroundStatus!}),
         'Reconnect attempt': '${c.retryAttempt}',
         if (c.selected != null &&
             c.selected!.rssi < 0 &&
@@ -159,6 +178,15 @@ class _ConnectionHealthPageState extends State<ConnectionHealthPage> {
               ),
             ),
             const SizedBox(height: 16),
+            if (backgroundStatus != null) ...[
+              OutlinedButton.icon(
+                icon: const Icon(Icons.settings_outlined),
+                label: const Text('Background App Refresh settings'),
+                onPressed: () =>
+                    backgroundChannel.invokeMethod<void>('settings'),
+              ),
+              const SizedBox(height: 16),
+            ],
             if (c.adaptive != null) ...[
               surface(
                 child: SwitchListTile.adaptive(

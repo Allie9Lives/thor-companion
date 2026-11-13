@@ -27,6 +27,9 @@ class TestBle implements BleTransport, ControlTransport, SignalTransport {
   final Host host;
   final links = StreamController<LinkState>.broadcast();
   final live = StreamController<List<int>>.broadcast();
+  Object? discoveryFailure;
+  bool missingCharacteristic = false;
+  int discoveries = 0;
   int signal = -88, cancellations = 0, opens = 0;
   List<int> reply = [];
   int sequence = 0;
@@ -59,7 +62,12 @@ class TestBle implements BleTransport, ControlTransport, SignalTransport {
   }
 
   @override
-  Future<void> discover(String id) async {}
+  Future<void> discover(String id) async {
+    discoveries++;
+    missingCharacteristic = false;
+    if (discoveryFailure != null) throw discoveryFailure!;
+  }
+
   @override
   Stream<List<int>> subscribe(String id, String c) => live.stream;
   @override
@@ -68,6 +76,9 @@ class TestBle implements BleTransport, ControlTransport, SignalTransport {
   bool supportsControls(String id) => true;
   @override
   Future<List<int>> read(String id, String c) async {
+    if (missingCharacteristic && c == statsId) {
+      throw Exception("Characteristic not found or discovered: stats");
+    }
     if (c == controlId) {
       final bytes = reply.isEmpty
           ? utf8.encode('{"v":1,"ack":"","error":""}')
@@ -192,6 +203,39 @@ void main() {
     return states;
   }
 
+  test(
+    'background-invalidated characteristics rediscover and retry the read',
+    () async {
+      await start();
+      link.setForeground(false);
+      ble.missingCharacteristic = true;
+      final before = ble.discoveries;
+      final result = jsonDecode(
+        utf8.decode(await link.read('thor-id', statsId)),
+      );
+      expect(result['battery_pct'], 70);
+      expect(ble.discoveries, before + 1);
+      expect(ble.opens, 1);
+    },
+  );
+  test(
+    'stale Bluetooth discovery preserves verified network readings',
+    () async {
+      host.reachable = true;
+      await start();
+      await until(() => link.networkReady);
+      ble.discoveryFailure = StaleServiceCache();
+      await link.discover('thor-id');
+      expect(link.networkReady, true);
+      expect(link.bleConnected, false);
+      expect(
+        jsonDecode(
+          utf8.decode(await link.read('thor-id', statsId)),
+        )['battery_pct'],
+        70,
+      );
+    },
+  );
   test(
     'isolated Wi-Fi retains BLE; verified Wi-Fi takes over without cancelling BLE',
     () async {

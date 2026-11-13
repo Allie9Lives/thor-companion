@@ -73,7 +73,10 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>bluetooth-central</string>
+		<string>fetch</string>
 	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array><string>com.alan.thorCompanion.refresh</string></array>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Save screenshots and recordings from your Thor to Photos on this iPhone.</string>
 	<key>NSSupportsLiveActivities</key>

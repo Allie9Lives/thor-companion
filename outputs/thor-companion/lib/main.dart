@@ -44,6 +44,21 @@ class _ThorCompanionAppState extends State<ThorCompanionApp> {
         widget.initialAppearance ??
         appearanceFromName(widget.initialThemeMode.name);
     if (ownsController) unawaited(loadAppearance());
+    if (ownsController &&
+        !kIsWeb &&
+        defaultTargetPlatform == TargetPlatform.iOS) {
+      const channel = MethodChannel('com.alan.thorCompanion/backgroundRefresh');
+      channel.setMethodCallHandler((call) async {
+        if (call.method == 'refresh') {
+          return controller.backgroundRefresh().timeout(
+            const Duration(seconds: 23),
+            onTimeout: () => false,
+          );
+        }
+        throw MissingPluginException();
+      });
+      unawaited(channel.invokeMethod<void>('ready'));
+    }
   }
 
   Future<void> loadAppearance() async {

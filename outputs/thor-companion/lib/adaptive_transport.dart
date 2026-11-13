@@ -6,6 +6,7 @@ import 'ble_transport.dart';
 import 'file_transfer.dart';
 import 'adaptive_network.dart';
 import 'link_policy.dart';
+import 'diagnostics.dart';
 
 /// One logical Thor session, with a retained BLE link and a verified network path.
 /// Explicit cancellation ends both paths. Network polling is foreground-only.
@@ -74,6 +75,7 @@ class AdaptiveTransport extends ChangeNotifier
   Timer? _timer, _retry;
   Future<void> _bleTail = Future.value();
   bool _bleBusy = false;
+  bool _serviceRecoveryAttempted = false, _serviceRecoveryBlocked = false;
   bool get networkReady =>
       automatic &&
       foreground &&
@@ -309,7 +311,7 @@ class AdaptiveTransport extends ChangeNotifier
   }
 
   void _scheduleBle(int epoch) {
-    if (sleeping) return;
+    if (sleeping || _serviceRecoveryBlocked) return;
     if (_retry?.isActive ?? false) return;
     _retry = Timer(const Duration(seconds: 5), () async {
       await _bleSub?.cancel();
@@ -322,9 +324,20 @@ class AdaptiveTransport extends ChangeNotifier
   Future<void> discover(String id) async {
     if (id != _device) throw StateError('Connection changed');
     if (bleConnected) {
-      await _bleOperation(
-        () => ble.discover(id).timeout(const Duration(seconds: 12)),
-      );
+      try {
+        await _bleOperation(
+          () => ble.discover(id).timeout(const Duration(seconds: 12)),
+        );
+        _serviceRecoveryAttempted = _serviceRecoveryBlocked = false;
+      } on StaleServiceCache {
+        // A broken Bluetooth cache must not take down a verified Wi-Fi path.
+        if (!networkReady) rethrow;
+        logBle('Thor BLE cache stale; preserving verified network connection');
+        _serviceRecoveryBlocked = _serviceRecoveryAttempted;
+        _serviceRecoveryAttempted = true;
+        _bleDown(_epoch);
+        return;
+      }
       _discovered = true;
       await _bootstrap();
       await _attachLive();
@@ -586,9 +599,30 @@ class AdaptiveTransport extends ChangeNotifier
     if (!bleConnected) throw StateError('Bluetooth is unavailable');
     final watch = Stopwatch()..start();
     try {
-      final bytes = await _bleOperation(
-        () => ble.read(_device!, id).timeout(const Duration(seconds: 2)),
-      );
+      final bytes = await _bleOperation(() async {
+        try {
+          return await ble
+              .read(_device!, id)
+              .timeout(const Duration(seconds: 2));
+        } catch (error) {
+          if (!error.toString().contains(
+            'Characteristic not found or discovered',
+          )) {
+            rethrow;
+          }
+          // CoreBluetooth can invalidate its characteristic objects while
+          // backgrounded without ending the physical connection.
+          logBle(
+            'Thor BLE restoring characteristic lookup before retrying read',
+          );
+          await ble.discover(_device!).timeout(const Duration(seconds: 12));
+          _discovered = true;
+          await _bleLive?.cancel();
+          _bleLive = null;
+          await _attachLive();
+          return ble.read(_device!, id).timeout(const Duration(seconds: 2));
+        }
+      });
       policy.bluetooth(elapsed: watch.elapsed);
       return bytes;
     } catch (_) {
@@ -695,6 +729,7 @@ class AdaptiveTransport extends ChangeNotifier
     _reply = null;
     _credentials = null;
     _bootstrapAt = null;
+    _serviceRecoveryAttempted = _serviceRecoveryBlocked = false;
     _dropNetwork('Disconnected');
     await _bleLive?.cancel();
     _bleLive = null;

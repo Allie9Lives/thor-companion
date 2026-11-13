@@ -75,7 +75,7 @@ class CompanionController extends ChangeNotifier {
       }
       _notify();
     });
-    if (rememberDevice) unawaited(_restore());
+    if (rememberDevice) _restoration = _restore();
   }
 
   CompanionController.demo()
@@ -164,6 +164,8 @@ class CompanionController extends ChangeNotifier {
   bool automaticReconnect = true;
   bool _wantsConnection = false, _foreground = true;
   bool _manualRecoveryRequired = false;
+  Future<void>? _restoration;
+  bool _serviceRecoveryAttempted = false;
   int retryAttempt = 0;
   int _intentEpoch = 0;
   DateTime? retryAt;
@@ -1435,6 +1437,35 @@ class CompanionController extends ChangeNotifier {
     }
   }
 
+  Future<bool> backgroundRefresh() async {
+    await _restoration;
+    if (isDemo ||
+        _disposed ||
+        !automaticReconnect ||
+        !_wantsConnection ||
+        keepAlivePaused ||
+        _manualRecoveryRequired) {
+      return false;
+    }
+    final before = receivedCount;
+    if (connected) {
+      await refresh();
+    } else if (!busy) {
+      final device = selected ?? remembered;
+      if (device == null) return false;
+      await connect(device, automatic: true, background: true);
+    }
+    final deadline = DateTime.now().add(const Duration(seconds: 18));
+    while (!_disposed &&
+        _wantsConnection &&
+        !_manualRecoveryRequired &&
+        receivedCount == before &&
+        DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
+    return receivedCount > before;
+  }
+
   void _cancelRetry() {
     _retryTimer?.cancel();
     _retryTimer = null;
@@ -1631,6 +1662,7 @@ class CompanionController extends ChangeNotifier {
       ++_intentEpoch;
       retryAttempt = 0;
       _manualRecoveryRequired = false;
+      _serviceRecoveryAttempted = false;
     }
     unawaited(_saveConnectionIntent());
     if (connected && selected?.id == device.id) {
@@ -1782,6 +1814,14 @@ class CompanionController extends ChangeNotifier {
       if (session == _session) {
         lastFailure = e;
         logBle('Thor BLE setup: $e');
+        if (e is StaleServiceCache &&
+            !_serviceRecoveryAttempted &&
+            automaticReconnect &&
+            _wantsConnection) {
+          _serviceRecoveryAttempted = true;
+          _linkLost(session, 'Refreshing Bluetooth connection…');
+          return;
+        }
         _manualRecoveryRequired = e is StaleServiceCache;
         notificationsRequested = false;
         error = _message(
@@ -1843,6 +1883,7 @@ class CompanionController extends ChangeNotifier {
       await _observeBattery(next, deviceId);
       if (_disposed || session != _session) return false;
       _freshThisConnection = true;
+      _serviceRecoveryAttempted = false;
       receivedAt = DateTime.now();
       receivedCount++;
       retryAttempt = 0;

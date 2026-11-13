@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 import Security
 import WidgetKit
 import ActivityKit
+import BackgroundTasks
 
 private final class ThorAlertDelegate: NSObject, UNUserNotificationCenterDelegate {
   func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
@@ -16,6 +17,30 @@ private final class ThorAlertDelegate: NSObject, UNUserNotificationCenterDelegat
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+  private let refreshID = "com.alan.thorCompanion.refresh"
+  private var refreshChannel: FlutterMethodChannel?
+  private var refreshBridgeReady = false
+  private var refreshTask: BGAppRefreshTask?
+  private var refreshTimeout: DispatchWorkItem?
+  private func scheduleRefresh() {
+    guard UIApplication.shared.backgroundRefreshStatus == .available else { return }
+    let request = BGAppRefreshTaskRequest(identifier: refreshID)
+    request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
+    do { try BGTaskScheduler.shared.submit(request) }
+    catch { NSLog("Thor background refresh scheduling: %@", error.localizedDescription) }
+  }
+  private func finishRefresh(_ success: Bool) {
+    refreshTimeout?.cancel(); refreshTimeout = nil
+    let task = refreshTask; refreshTask = nil
+    task?.setTaskCompleted(success: success)
+  }
+  private func runRefresh() {
+    guard refreshBridgeReady, let task = refreshTask else { return }
+    refreshChannel?.invokeMethod("refresh", arguments: nil) { [weak self, weak task] result in
+      guard let self = self, self.refreshTask === task else { return }
+      self.finishRefresh(result as? Bool ?? false)
+    }
+  }
   private var fileResult: FlutterResult?
   private var fileMode = ""
   private let fileAccount = "thor-file-connection"
@@ -27,11 +52,40 @@ private final class ThorAlertDelegate: NSObject, UNUserNotificationCenterDelegat
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    BGTaskScheduler.shared.register(forTaskWithIdentifier: refreshID, using: .main) { [weak self] task in
+      guard let self = self, let refresh = task as? BGAppRefreshTask else {
+        task.setTaskCompleted(success: false); return
+      }
+      self.finishRefresh(false)
+      self.refreshTask = refresh
+      refresh.expirationHandler = { [weak self] in DispatchQueue.main.async { self?.finishRefresh(false) } }
+      let timeout = DispatchWorkItem { [weak self] in self?.finishRefresh(false) }
+      self.refreshTimeout = timeout
+      DispatchQueue.main.asyncAfter(deadline: .now() + 25, execute: timeout)
+      self.scheduleRefresh()
+      self.runRefresh()
+    }
+    NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification,
+      object: nil, queue: .main) { [weak self] _ in self?.scheduleRefresh() }
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    let refreshRegistrar = engineBridge.pluginRegistry.registrar(forPlugin: "ThorBackgroundRefreshBridge")!
+    let refresh = FlutterMethodChannel(name: "com.alan.thorCompanion/backgroundRefresh", binaryMessenger: refreshRegistrar.messenger())
+    refreshChannel = refresh
+    refresh.setMethodCallHandler { [weak self] call, result in
+      guard let self = self else { result(nil); return }
+      if call.method == "ready" {
+        self.refreshBridgeReady = true; self.scheduleRefresh(); self.runRefresh(); result(nil)
+      } else if call.method == "status" {
+        result(UIApplication.shared.backgroundRefreshStatus == .available ? "Enabled" :
+          UIApplication.shared.backgroundRefreshStatus == .denied ? "Off in iPhone Settings" : "Restricted")
+      } else if call.method == "settings" {
+        UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!); result(nil)
+      } else { result(FlutterMethodNotImplemented) }
+    }
     UNUserNotificationCenter.current().delegate = thorAlertDelegate
     let aboutRegistrar = engineBridge.pluginRegistry.registrar(forPlugin: "ThorAboutBridge")!
     let aboutChannel = FlutterMethodChannel(name: "com.alan.thorCompanion/about", binaryMessenger: aboutRegistrar.messenger())

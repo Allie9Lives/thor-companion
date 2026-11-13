@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'diagnostics.dart';
 import 'connection_lifecycle.dart';
@@ -54,20 +55,33 @@ class ReactiveBleTransport
   Future<int> readSignal(String deviceId) => _ble.readRssi(deviceId);
   final FlutterReactiveBle _ble = FlutterReactiveBle();
   final _controlDevices = <String>{};
+  bool _resetOnConnect = false;
+  final _radio = StreamController<RadioState>.broadcast();
+  StreamSubscription<BleStatus>? _statusSubscription;
+  void _watchRadio() {
+    _statusSubscription ??= _ble.statusStream.listen((status) {
+      _radio.add(_radioState(status));
+    }, onError: _radio.addError);
+  }
+
   @override
   bool supportsControls(String deviceId) => _controlDevices.contains(deviceId);
 
   @override
-  Stream<RadioState> get radio => _ble.statusStream.map(
-    (status) => switch (status) {
-      BleStatus.ready => RadioState.ready,
-      BleStatus.poweredOff => RadioState.off,
-      BleStatus.unauthorized => RadioState.unauthorized,
-      BleStatus.unsupported => RadioState.unavailable,
-      BleStatus.locationServicesDisabled => RadioState.unavailable,
-      _ => RadioState.starting,
-    },
-  );
+  Stream<RadioState> get radio async* {
+    _watchRadio();
+    yield _radioState(_ble.status);
+    yield* _radio.stream;
+  }
+
+  RadioState _radioState(BleStatus status) => switch (status) {
+    BleStatus.ready => RadioState.ready,
+    BleStatus.poweredOff => RadioState.off,
+    BleStatus.unauthorized => RadioState.unauthorized,
+    BleStatus.unsupported => RadioState.unavailable,
+    BleStatus.locationServicesDisabled => RadioState.unavailable,
+    _ => RadioState.starting,
+  };
 
   @override
   Future<void> requestAccess() async {
@@ -96,13 +110,24 @@ class ReactiveBleTransport
       );
 
   @override
-  Stream<LinkState> connect(String deviceId, {bool background = false}) {
+  Stream<LinkState> connect(String deviceId, {bool background = false}) async* {
+    if (_resetOnConnect) {
+      _resetOnConnect = false;
+      logBle('Thor BLE rebuilding native service discovery state');
+      await _statusSubscription?.cancel();
+      _statusSubscription = null;
+      await _ble.deinitialize();
+      await _ble.initialize();
+      _controlDevices.clear();
+      _watchRadio();
+    }
     final services = {
       Uuid.parse(thorServiceId): [
         Uuid.parse(statsId),
         Uuid.parse(liveId),
         Uuid.parse(hardwareId),
       ],
+      Uuid.parse(controlServiceId): [Uuid.parse(controlId)],
     };
     // A known CoreBluetooth peripheral may already have a system-level link.
     // Requiring another advertisement can reject a perfectly usable iOS link.
@@ -119,7 +144,7 @@ class ReactiveBleTransport
             connectionTimeout: const Duration(seconds: 20),
             servicesWithCharacteristicsToDiscover: services,
           );
-    return settleConnection(
+    yield* settleConnection(
       source: updates,
       lifecycle: _ble.connectedDeviceStream.where(
         (event) => event.deviceId == deviceId,
@@ -148,8 +173,22 @@ class ReactiveBleTransport
     if (defaultTargetPlatform == TargetPlatform.android) {
       await _ble.requestMtu(deviceId: deviceId, mtu: 185);
     }
-    await _ble.discoverAllServices(deviceId);
-    final services = await _ble.getDiscoveredServices(deviceId);
+    // iOS has already discovered the requested Thor services before emitting
+    // connected. Reuse those objects instead of rediscovering every audio
+    // service on each refresh. Android still needs explicit discovery.
+    if (defaultTargetPlatform != TargetPlatform.iOS) {
+      await _ble.discoverAllServices(deviceId);
+    }
+    var services = await _ble.getDiscoveredServices(deviceId);
+    if (defaultTargetPlatform == TargetPlatform.iOS &&
+        !services.any(
+          (s) =>
+              s.id == Uuid.parse(thorServiceId) &&
+              s.characteristics.any((c) => c.id == Uuid.parse(statsId)),
+        )) {
+      await _ble.discoverAllServices(deviceId);
+      services = await _ble.getDiscoveredServices(deviceId);
+    }
     _controlDevices.remove(deviceId);
     if (services.any(
       (s) =>
@@ -174,6 +213,7 @@ class ReactiveBleTransport
             s.characteristics.any((c) => c.id == Uuid.parse(statsId)),
       );
       if (misplacedStats && defaultTargetPlatform == TargetPlatform.iOS) {
+        _resetOnConnect = true;
         throw StaleServiceCache();
       }
       throw StateError(
