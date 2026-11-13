@@ -75,13 +75,14 @@ public class MainActivity extends Activity {
         heading.setOnClickListener(v->{
             boolean open=!heading.isSelected();heading.setSelected(open);if(motion[0]!=null)motion[0].cancel();
             int from=content.getVisibility()==View.VISIBLE?content.getHeight():0;
+            float fromAlpha=from==0?0:content.getAlpha(),fromY=from==0?-dp(6):content.getTranslationY();
             content.setVisibility(View.VISIBLE);content.measure(View.MeasureSpec.makeMeasureSpec(cardView.getWidth(),View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED));int target=open?content.getMeasuredHeight():0;
-            arrow.animate().rotation(open?180:0).setDuration(220).setInterpolator(HostMotion.EASE).start();heading.setContentDescription(title+(open?", hide options":", show options"));
-            if(!android.animation.ValueAnimator.areAnimatorsEnabled()){content.setVisibility(open?View.VISIBLE:View.GONE);content.getLayoutParams().height=-2;return;}
-            android.animation.ValueAnimator anim=android.animation.ValueAnimator.ofInt(from,target);motion[0]=anim;anim.setDuration(240);anim.setInterpolator(HostMotion.EASE);
-            anim.addUpdateListener(a->{int height=(int)a.getAnimatedValue();content.getLayoutParams().height=height;content.requestLayout();content.setAlpha(target==0?(from==0?0:(float)height/from):(target==0?1:(float)height/target));});
-            anim.addListener(new android.animation.AnimatorListenerAdapter(){boolean cancelled;public void onAnimationCancel(android.animation.Animator a){cancelled=true;}public void onAnimationEnd(android.animation.Animator a){if(cancelled)return;content.setVisibility(open?View.VISIBLE:View.GONE);content.getLayoutParams().height=-2;content.setAlpha(1);content.requestLayout();}});anim.start();
-        });return content;
+            arrow.animate().rotation(open?180:0).setDuration(300).setInterpolator(HostMotion.EASE).start();heading.setContentDescription(title+(open?", hide options":", show options"));
+            if(!android.animation.ValueAnimator.areAnimatorsEnabled()){content.setVisibility(open?View.VISIBLE:View.GONE);content.getLayoutParams().height=-2;content.setAlpha(1);content.setTranslationY(0);arrow.animate().cancel();arrow.setRotation(open?180:0);return;}
+            android.animation.ValueAnimator anim=android.animation.ValueAnimator.ofFloat(0,1);motion[0]=anim;anim.setDuration(300);anim.setInterpolator(HostMotion.EASE);
+            anim.addUpdateListener(a->{float t=(float)a.getAnimatedValue();int height=Math.round(from+(target-from)*t);content.getLayoutParams().height=height;content.requestLayout();content.setAlpha(fromAlpha+((open?1:0)-fromAlpha)*t);content.setTranslationY(fromY+((open?0:-dp(6))-fromY)*t);});
+            anim.addListener(new android.animation.AnimatorListenerAdapter(){boolean cancelled;public void onAnimationCancel(android.animation.Animator a){cancelled=true;}public void onAnimationEnd(android.animation.Animator a){if(cancelled)return;content.setVisibility(open?View.VISIBLE:View.GONE);content.getLayoutParams().height=-2;content.setAlpha(1);content.setTranslationY(0);motion[0]=null;content.requestLayout();}});anim.start();
+        });content.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){public void onViewAttachedToWindow(View v){}public void onViewDetachedFromWindow(View v){if(motion[0]!=null){motion[0].cancel();motion[0]=null;}arrow.animate().cancel();}});return content;
     }
     private void setupHeading(String title,String subtitle,String symbol){
         TextView count=text((step+1)+" of 6",14,true);count.setTextColor(muted);count.setContentDescription("Setup step "+(step+1)+" of 6");page.addView(count);gap(page,10);
@@ -180,8 +181,11 @@ public class MainActivity extends Activity {
         if(previous.getParent() instanceof ViewGroup)((ViewGroup)previous.getParent()).removeView(previous);
         previous.animate().cancel();if(previous instanceof ViewGroup)((ViewGroup)previous).setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);previous.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         FrameLayout scene=new FrameLayout(this);scene.setBackgroundColor(bg);scene.addView(previous,new FrameLayout.LayoutParams(-1,-1));scene.addView(next,new FrameLayout.LayoutParams(-1,-1));setContentView(scene);
-        next.setAlpha(0);next.setTranslationX(dp(12));next.animate().alpha(1).translationX(0).setDuration(230).setInterpolator(HostMotion.EASE).start();
-        previous.animate().alpha(0).translationX(-dp(12)).setDuration(180).setInterpolator(HostMotion.EASE).withEndAction(()->scene.removeView(previous)).start();
+        boolean back=screen==0||(renderedScreen==screen&&screen==1&&step<renderedSetupStep)||(renderedScreen>screen&&screen!=3);
+        float travel=dp(back?-22:22);
+        next.setAlpha(0);next.setTranslationX(travel);next.setScaleX(.992f);next.setScaleY(.992f);
+        next.animate().alpha(1).translationX(0).scaleX(1).scaleY(1).setDuration(320).setInterpolator(HostMotion.EASE).withLayer().start();
+        previous.animate().alpha(0).translationX(-travel*.5f).setDuration(200).setInterpolator(HostMotion.EASE).withLayer().withEndAction(()->scene.removeView(previous)).start();
     }
     private void home(){
         overview=new HostOverviewView(this,()->{screen=4;build();},()->startMonitoring(false));page.addView(overview);
@@ -406,7 +410,7 @@ public class MainActivity extends Activity {
     private void chooseFolder(int request){Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION|Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION|Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);startActivityForResult(i,request);}
     @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==53||request==54){build();return;}if((request==51||request==52)&&result==RESULT_OK&&data!=null&&data.getData()!=null){try{FileAccess.choose(this,request==51?"internal":"sd",data.getData(),data.getFlags());build();}catch(Exception e){Toast.makeText(this,"Folder access was not granted",Toast.LENGTH_LONG).show();}}}
     @Override public void onResume(){super.onResume();if(onboardingBackdrop!=null)onboardingBackdrop.setRunning(true);handler.removeCallbacks(refresh);handler.post(refresh);}
-    @Override public void onPause(){if(onboardingBackdrop!=null)onboardingBackdrop.setRunning(false);handler.removeCallbacks(refresh);super.onPause();}
+    @Override public void onPause(){stickNavigation.reset();if(onboardingBackdrop!=null)onboardingBackdrop.setRunning(false);handler.removeCallbacks(refresh);super.onPause();}
     @Override public void onDestroy(){handler.removeCallbacksAndMessages(null);reader.shutdownNow();Recovery.stopPairingDiscovery(this);super.onDestroy();}
     @Override public boolean dispatchKeyEvent(KeyEvent event){
         int code=event.getKeyCode();int direction=code==KeyEvent.KEYCODE_DPAD_DOWN?View.FOCUS_DOWN:code==KeyEvent.KEYCODE_DPAD_UP?View.FOCUS_UP:code==KeyEvent.KEYCODE_DPAD_LEFT?View.FOCUS_LEFT:code==KeyEvent.KEYCODE_DPAD_RIGHT?View.FOCUS_RIGHT:code==KeyEvent.KEYCODE_BUTTON_R1?View.FOCUS_FORWARD:code==KeyEvent.KEYCODE_BUTTON_L1?View.FOCUS_BACKWARD:0;
@@ -416,6 +420,7 @@ public class MainActivity extends Activity {
         return super.dispatchKeyEvent(event);
     }
     private long lastStickMove;private int stickDirection;
+    private final StickNavigation stickNavigation=new StickNavigation();
     private void moveFocus(int direction){
         View focused=getCurrentFocus();if(focused instanceof HostBatteryInsightsView.HistoryChart&&(direction==View.FOCUS_LEFT||direction==View.FOCUS_RIGHT)){((HostBatteryInsightsView.HistoryChart)focused).step(direction==View.FOCUS_RIGHT?1:-1);return;}View next=focused==null?null:focused.focusSearch(direction);
         if(next==null&&focused==null){ArrayList<View> targets=new ArrayList<>();if(navigationRoot!=null)navigationRoot.addFocusables(targets,View.FOCUS_FORWARD,View.FOCUSABLES_ALL);for(View candidate:targets){if(candidate.isEnabled()&&candidate.getVisibility()==View.VISIBLE){next=candidate;break;}}}
@@ -424,10 +429,16 @@ public class MainActivity extends Activity {
     }
     @Override public boolean onGenericMotionEvent(MotionEvent event){
         if((event.getSource()&InputDevice.SOURCE_JOYSTICK)==InputDevice.SOURCE_JOYSTICK&&event.getAction()==MotionEvent.ACTION_MOVE){
-            float x=event.getAxisValue(MotionEvent.AXIS_HAT_X),y=event.getAxisValue(MotionEvent.AXIS_HAT_Y);
-            if(Math.abs(x)<0.5f)x=event.getAxisValue(MotionEvent.AXIS_X);if(Math.abs(y)<0.5f)y=event.getAxisValue(MotionEvent.AXIS_Y);
-            if(Math.max(Math.abs(x),Math.abs(y))>0.6f){int direction=Math.abs(y)>=Math.abs(x)?(y>0?View.FOCUS_DOWN:View.FOCUS_UP):(x>0?View.FOCUS_RIGHT:View.FOCUS_LEFT);long now=SystemClock.uptimeMillis();if(direction!=stickDirection||now-lastStickMove>170){stickDirection=direction;lastStickMove=now;moveFocus(direction);}return true;}
+            float hatX=event.getAxisValue(MotionEvent.AXIS_HAT_X),hatY=event.getAxisValue(MotionEvent.AXIS_HAT_Y);
+            long now=SystemClock.uptimeMillis();
+            if(Math.max(Math.abs(hatX),Math.abs(hatY))>.5f){
+                int direction=Math.abs(hatY)>=Math.abs(hatX)?(hatY>0?View.FOCUS_DOWN:View.FOCUS_UP):(hatX>0?View.FOCUS_RIGHT:View.FOCUS_LEFT);
+                if(direction!=stickDirection||now-lastStickMove>170){stickDirection=direction;lastStickMove=now;moveFocus(direction);}return true;
+            }
             stickDirection=0;
+            float x=event.getAxisValue(MotionEvent.AXIS_X),y=event.getAxisValue(MotionEvent.AXIS_Y);
+            int direction=stickNavigation.next(x,y,now);if(direction!=0)moveFocus(direction);
+            return true;
         }
         return super.onGenericMotionEvent(event);
     }

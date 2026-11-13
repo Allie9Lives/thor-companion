@@ -4,26 +4,25 @@ Monitor and control your AYN Thor from an iPhone or Android phone.
 
 [Downloads](https://github.com/Allie9Lives/thor-companion/releases/latest) · [Setup](docs/setup.md) · [Report a bug](https://github.com/Allie9Lives/thor-companion/issues)
 
-## Download 0.16.4
+## Download 0.16.5
 
-Install **Thor Monitor** on the Thor and **Thor Companion** on your phone. Update both apps.
+Install **Thor Monitor 0.16.5** on the Thor and **Thor Companion 0.16.4** on your phone. This update changes the host; the current client downloads are included.
 
 | Device | Download |
 | --- | --- |
-| AYN Thor | [Thor Monitor APK](https://github.com/Allie9Lives/thor-companion/releases/download/v0.16.2/Thor-Monitor-0.16.4.apk) |
-| Android phone | [Thor Companion APK](https://github.com/Allie9Lives/thor-companion/releases/download/v0.16.2/Thor-Companion-Android-0.16.4.apk) |
-| iPhone | [Thor Companion IPA](https://github.com/Allie9Lives/thor-companion/releases/download/v0.16.2/Thor-Companion-iOS-0.16.4-development.ipa) |
+| AYN Thor | [Thor Monitor APK](https://github.com/Allie9Lives/thor-companion/releases/download/v0.16.5/Thor-Monitor-0.16.5.apk) |
+| Android phone | [Thor Companion APK](https://github.com/Allie9Lives/thor-companion/releases/download/v0.16.5/Thor-Companion-Android-0.16.4.apk) |
+| iPhone | [Thor Companion IPA](https://github.com/Allie9Lives/thor-companion/releases/download/v0.16.5/Thor-Companion-iOS-0.16.4-development.ipa) |
 
 The IPA is a development build and needs valid signing or re-signing to install. Source ZIPs and checksums are in the [release](https://github.com/Allie9Lives/thor-companion/releases/latest).
 
 ## Updated in this release
 
-- Automatic recovery for stale Bluetooth services and missing readings after returning to the app.
-- iPhone Background App Refresh support, with status and a Settings shortcut in Connection health.
-- Smoother host menus, a sliding selection highlight, and D-pad/stick navigation through Overview, settings and setup.
-- Controller support for Battery insights, including graph browsing and time-range selection.
-- Larger host battery gauge and separate About and Sound credits pages.
-- Focused apps stays in the client; it has been removed from the host Overview.
+- Smoother host page transitions, sliding selection, scrolling, and expanding menus.
+- Animated battery and usage gauges, with larger battery and charging symbols.
+- Overview icons and storage usage percentages for internal storage and microSD.
+- Less sensitive joystick navigation with slower held repeats. D-pad behavior stays the same.
+- Two-screen controls setup and a looping lightning background during onboarding.
 
 ## New since 0.14.4
 
