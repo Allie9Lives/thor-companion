@@ -415,19 +415,25 @@ void main() {
     },
   );
   test(
-    'stale service cache retries once then preserves recovery instructions',
+    'stale pairing stops retries and preserves repair instructions',
     () async {
       fastRetries();
       ble.discoveryFailure = StaleServiceCache();
       await establish();
-      await until(() => ble.connections == 2);
-      ble.links.add(LinkState.connected);
+      expect(c.pairingRecoveryRequired, isTrue);
+      expect(c.connected, isFalse);
+      expect(c.busy, isFalse);
+      expect(c.retryAt, isNull);
+      expect(c.error, contains('saved Bluetooth pairing is out of date'));
+      c.setForeground(false);
+      c.setForeground(true);
+      ble.radios.add(RadioState.off);
+      await settle();
+      ble.radios.add(RadioState.ready);
       await Future<void>.delayed(const Duration(milliseconds: 150));
-      expect(ble.connections, 2);
-      expect(c.error, contains('service information is out of date'));
-      ble.discoveryFailure = null;
-      await c.connect(const NearbyThor('thor', 'Thor', -50));
-      expect(c.stats?.battery, 69);
+      expect(ble.connections, 1);
+      expect(c.pairingRecoveryRequired, isTrue);
+      expect(c.error, contains('Re-pair the Thor'));
     },
   );
   test('background refresh respects explicit Disconnect', () async {
@@ -446,12 +452,17 @@ void main() {
       expect(c.receivedCount, greaterThan(count));
     },
   );
-  test('transient stale services recover without restarting the app', () async {
+  test('repair flow scans afresh and resumes after a new pairing', () async {
     fastRetries();
     ble.discoveryFailure = StaleServiceCache();
     await establish();
-    await until(() => ble.connections == 2);
+    await c.scanAfterPairingReset();
+    expect(c.pairingRecoveryRequired, isFalse);
+    expect(c.remembered, isNull);
+    expect(c.selected, isNull);
+    expect(c.phase, CompanionPhase.scanning);
     ble.discoveryFailure = null;
+    await c.connect(const NearbyThor('new-id', 'Thor', -50));
     ble.links.add(LinkState.connected);
     await until(() => c.notificationsRequested);
     expect(c.stats?.battery, 69);

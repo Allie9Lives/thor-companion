@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'companion_controller.dart';
 import 'telemetry.dart';
 import 'ui.dart';
+import 'design_components.dart';
 import 'keyboard_page.dart';
 import 'screenshot_page.dart';
 import 'files_page.dart';
@@ -203,18 +204,15 @@ class _ControlsPageState extends State<ControlsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
-                'Tools',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-              ),
+              const SectionHeading('Tools', Icons.widgets_outlined),
               const SizedBox(height: 12),
               LayoutBuilder(
                 builder: (context, box) {
                   final scale = MediaQuery.textScalerOf(context).scale(16),
                       columns = box.maxWidth >= 300 && scale <= 21 ? 2 : 1;
                   final width = (box.maxWidth - (columns - 1) * 8) / columns;
-                  final height = (24 + 6 + scale * 2 * 1.3 + 20).clamp(
-                    94.0,
+                  final height = (36 + 12 + scale * 2.4 + 40).clamp(
+                    124.0,
                     320.0,
                   );
                   Widget tool(
@@ -223,49 +221,29 @@ class _ControlsPageState extends State<ControlsPage> {
                     VoidCallback? action, {
                     bool primary = false,
                   }) {
-                    final content = Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(icon, size: 24),
-                        const SizedBox(height: 6),
-                        SizedBox(
-                          height: scale * 2.4,
-                          child: Center(
-                            child: Text(
-                              label,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(fontSize: 16, height: 1.2),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
                     return SizedBox(
                       width: width,
                       height: height,
-                      child: primary
-                          ? FilledButton.tonal(
-                              onPressed: action,
-                              style: FilledButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 8,
-                                ),
-                              ),
-                              child: content,
-                            )
-                          : OutlinedButton(
-                              onPressed: action,
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 8,
-                                ),
-                              ),
-                              child: content,
-                            ),
+                      child: ActionTile(
+                        label: label,
+                        icon: icon,
+                        onPressed: action,
+                        nested: true,
+                        selected: primary && locatorActive,
+                        color: AppPalette.of(context).isRainbow
+                            ? AppPalette.of(context).rainbowColors[[
+                                    'Find my Thor',
+                                    'Open files',
+                                    'App drawer',
+                                    'FTP server',
+                                    'Open keyboard',
+                                    'Screen capture',
+                                    'Connection health',
+                                    'Battery insights',
+                                  ].indexOf(label).clamp(0, 7) %
+                                  4]
+                            : null,
+                      ),
                     );
                   }
 
@@ -327,11 +305,6 @@ class _ControlsPageState extends State<ControlsPage> {
                   );
                 },
               ),
-              const SizedBox(height: 10),
-              const Text(
-                'Find my Thor plays at high alarm volume for up to one minute. Volume is locked until you stop the sound on either device.',
-                style: TextStyle(fontSize: 14),
-              ),
             ],
           ),
         ),
@@ -359,10 +332,7 @@ class _ControlsPageState extends State<ControlsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
-                  'Brightness',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                ),
+                const SectionHeading('Brightness', Icons.brightness_6_outlined),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Sync screens'),
@@ -391,10 +361,7 @@ class _ControlsPageState extends State<ControlsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
-                  'Volume',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                ),
+                const SectionHeading('Volume', Icons.volume_up_outlined),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Sync volume'),
@@ -478,9 +445,9 @@ class _ControlsPageState extends State<ControlsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
+                const SectionHeading(
                   'Device Power',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                  Icons.power_settings_new_rounded,
                 ),
                 const SizedBox(height: 12),
                 OutlinedButton.icon(

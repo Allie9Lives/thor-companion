@@ -26,7 +26,7 @@ enum LinkState { connecting, connected, disconnected }
 class StaleServiceCache extends StateError {
   StaleServiceCache()
     : super(
-        'Bluetooth service information is out of date. In iPhone Settings → Bluetooth, forget Thor. Then scan here and pair again.',
+        'Your iPhone’s saved Bluetooth pairing is out of date. Re-pair the Thor to continue.',
       );
 }
 
@@ -55,7 +55,6 @@ class ReactiveBleTransport
   Future<int> readSignal(String deviceId) => _ble.readRssi(deviceId);
   final FlutterReactiveBle _ble = FlutterReactiveBle();
   final _controlDevices = <String>{};
-  bool _resetOnConnect = false;
   final _radio = StreamController<RadioState>.broadcast();
   StreamSubscription<BleStatus>? _statusSubscription;
   void _watchRadio() {
@@ -111,16 +110,6 @@ class ReactiveBleTransport
 
   @override
   Stream<LinkState> connect(String deviceId, {bool background = false}) async* {
-    if (_resetOnConnect) {
-      _resetOnConnect = false;
-      logBle('Thor BLE rebuilding native service discovery state');
-      await _statusSubscription?.cancel();
-      _statusSubscription = null;
-      await _ble.deinitialize();
-      await _ble.initialize();
-      _controlDevices.clear();
-      _watchRadio();
-    }
     final services = {
       Uuid.parse(thorServiceId): [
         Uuid.parse(statsId),
@@ -213,7 +202,6 @@ class ReactiveBleTransport
             s.characteristics.any((c) => c.id == Uuid.parse(statsId)),
       );
       if (misplacedStats && defaultTargetPlatform == TargetPlatform.iOS) {
-        _resetOnConnect = true;
         throw StaleServiceCache();
       }
       throw StateError(

@@ -97,6 +97,29 @@ final class Recovery {
             if(success) attempt(c);
         });
     }
+    private static String shellText(LocalAdb adb,String command)throws Exception{
+        try(AdbStream stream=adb.openStream("shell:"+command)){
+            java.io.ByteArrayOutputStream output=new java.io.ByteArrayOutputStream();byte[] buffer=new byte[512];int n;
+            java.io.InputStream input=stream.openInputStream();while(true){try{n=input.read(buffer);}catch(java.io.IOException e){if(stream.isClosed())break;throw e;}if(n<0)break;if(output.size()+n>8192)throw new java.io.IOException("Unexpected settings response");output.write(buffer,0,n);}
+            if(command.contains(" get ")&&output.size()==0)throw new java.io.IOException("Missing settings response");
+            return output.toString("UTF-8").trim();
+        }
+    }
+    private static void protectFromCleanup(Context c,LocalAdb adb)throws Exception{
+        if(!HostBackgroundProtection.needsUpdate(c))return;
+        String pkg=c.getPackageName();if(!pkg.matches("[A-Za-z0-9_.]+"))throw new IllegalStateException("Invalid package");
+        ScheduledFuture<?> deadline=deadlines.schedule(()->{try{adb.disconnect();}catch(Exception ignored){}},8,TimeUnit.SECONDS);
+        try{
+            String before=shellText(adb,"/system/bin/settings get system app_whiteList");if(before.equals("null"))before=null;
+            String after=HostBackgroundProtection.update(before,pkg,c.getSharedPreferences("monitor",0).getBoolean("protect_recents",true));
+            if(!java.util.Objects.equals(before,after)){
+                String quoted="'"+after.replace("'","'\"'\"'")+"'";
+                shellText(adb,"/system/bin/settings put system app_whiteList "+quoted);
+            }
+            if(!after.equals(shellText(adb,"/system/bin/settings get system app_whiteList")))throw new IllegalStateException("Background protection was not saved");
+            log(c,"background_protection_ready","Launcher exemption updated through paired on-device ADB");
+        }finally{deadline.cancel(false);}
+    }
     static void attempt(Context context) {
         Context c=context.getApplicationContext();
         if(!enabled(c) || !busy.compareAndSet(false,true)) return;
@@ -108,7 +131,8 @@ final class Recovery {
                 if(!permitted(c) && Settings.Global.getInt(c.getContentResolver(),"adb_wifi_enabled",0)==0) {
                     state="Turn on wireless debugging to finish the one-time setup";return;
                 }
-                if(helperReady(c) && permitted(c)) {state="Advanced controls ready";return;}
+                if(permitted(c))HostBackgroundProtection.apply(c);
+                if(helperReady(c) && permitted(c)&&!HostBackgroundProtection.needsUpdate(c)) {state="Advanced controls ready";return;}
                 // Android's wireless-debugging service handles Wi-Fi readiness and network approval.
                 // A default-network test incorrectly rejects local-only and vendor-managed Wi-Fi.
                 if(approvalWaiting && Settings.Global.getInt(c.getContentResolver(),"adb_wifi_enabled",0)==0){state="Check wireless debugging and its network approval, then tap Retry now";return;}
@@ -138,6 +162,7 @@ final class Recovery {
                         if(!permitted(c))throw new IllegalStateException("One-time permission was not granted; see setup help");
                         log(c,"recovery_permission_ready","Permission granted through on-device paired ADB");
                     }
+                    protectFromCleanup(c,adb);
                     if(helperReady(c)){state="Advanced controls ready";return;}
                     String apk=c.getApplicationInfo().sourceDir;
                     if(!apk.matches("/data/app/[A-Za-z0-9_+=/~.-]+/base\\.apk")) throw new IllegalStateException("Unexpected app location");
@@ -157,6 +182,7 @@ final class Recovery {
                     state="Advanced controls ready";log(c,"controls_recovered","Helper restarted through local TLS ADB");
                 }
             } catch(Exception e) {
+                if(HostBackgroundProtection.needsUpdate(c))log(c,"background_protection_retry",e.getClass().getSimpleName()+": "+String.valueOf(e.getMessage()));
                 if(helperReady(c)) {state="Advanced controls ready";log(c,"controls_recovered","Helper verified after local TLS stream closed");}
                 else {state="Recovery will retry. Check wireless debugging if controls stay unavailable.";log(c,"recovery_retry",e.getClass().getSimpleName()+": "+String.valueOf(e.getMessage()));}
             } finally {if(lock.isHeld())lock.release();busy.set(false);}

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'companion_controller.dart';
 import 'telemetry.dart';
 import 'ui.dart';
+import 'design_components.dart';
 import 'battery_pages.dart';
 import 'stats_copy.dart';
 import 'runtime_view.dart';
@@ -35,27 +36,22 @@ class Dashboard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Text(
+          h?.deviceName ?? c.selected?.name ?? 'Your Thor',
+          style: const TextStyle(
+            fontSize: 28,
+            height: 1.12,
+            fontWeight: FontWeight.w600,
+            letterSpacing: -.65,
+          ),
+        ),
+        const SizedBox(height: 12),
         Row(
           children: [
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    h?.deviceName ?? c.selected?.name ?? 'Your Thor',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    h?.displayModel ?? 'AYN Thor',
-                    style: TextStyle(color: secondaryText, fontSize: 16),
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    c.freshness,
-                    style: TextStyle(color: secondaryText, fontSize: 14),
-                  ),
-                ],
+              child: Text(
+                h?.displayModel ?? 'AYN Thor',
+                style: TextStyle(color: secondaryText, fontSize: 16),
               ),
             ),
             Container(
@@ -90,19 +86,11 @@ class Dashboard extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: 6),
+        Text(c.freshness, style: TextStyle(color: secondaryText, fontSize: 14)),
         SizedBox(height: 20),
         batteryPanel(),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => BatteryInsightsPage(controller: c),
-            ),
-          ),
-          icon: const Icon(Icons.insights_outlined),
-          label: const Text('Battery insights'),
-        ),
-        SizedBox(height: 12),
+        SizedBox(height: 16),
         performance(),
         if (c.activity != null) ...[
           const SizedBox(height: 12),
@@ -115,34 +103,17 @@ class Dashboard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Wrap(
-                spacing: 12,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.storage_outlined,
-                        size: 20,
-                        color: secondaryText,
-                      ),
-                      SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          'Internal storage',
-                          style: TextStyle(fontSize: 16),
-                        ),
-                      ),
-                    ],
-                  ),
-                  tag(
+              SectionHeading(
+                'Internal storage',
+                Icons.storage_outlined,
+                trailing: Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: tag(
                     h?.ufsVersion == null
                         ? 'UFS unknown'
                         : 'UFS ${h!.ufsVersion}',
                   ),
-                ],
+                ),
               ),
               SizedBox(height: 18),
               RichText(
@@ -169,9 +140,9 @@ class Dashboard extends StatelessWidget {
               SizedBox(height: 12),
               ClipRRect(
                 borderRadius: BorderRadius.circular(3),
-                child: LinearProgressIndicator(
+                child: AnimatedReadingBar(
                   value: fraction ?? 0,
-                  minHeight: 5,
+                  minHeight: 6,
                   backgroundColor: border,
                   valueColor: AlwaysStoppedAnimation(accent),
                 ),
@@ -268,6 +239,11 @@ class Dashboard extends StatelessWidget {
       return surface(
         copyText: statsForClipboard(controller, StatsSection.battery),
         copyLabel: 'Battery stats',
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => BatteryInsightsPage(controller: controller),
+          ),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -283,20 +259,44 @@ class Dashboard extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Battery',
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: p.secondaryText,
-                            ),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.battery_full_outlined,
+                                size: 19,
+                                color: p.accent,
+                              ),
+                              const SizedBox(width: 6),
+                              const Flexible(
+                                child: Text(
+                                  'Battery',
+                                  style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              Icon(
+                                Icons.chevron_right_rounded,
+                                size: 16,
+                                color: p.secondaryText,
+                              ),
+                            ],
                           ),
-                          Text(
-                            s.battery == null ? '—' : '${s.battery!.round()}%',
-                            style: TextStyle(
-                              fontSize: 46,
-                              height: 1.15,
-                              fontWeight: FontWeight.w500,
-                              letterSpacing: -1,
+                          const SizedBox(height: 8),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              s.battery == null
+                                  ? '—'
+                                  : '${s.battery!.round()}%',
+                              style: TextStyle(
+                                fontSize: 56,
+                                height: 1.15,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: -1,
+                              ),
                             ),
                           ),
                           SizedBox(height: 8),
@@ -429,22 +429,25 @@ class Dashboard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Performance',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
-            ),
+            const SectionHeading('Performance', Icons.speed_rounded),
             SizedBox(height: 18),
             usage(
               'CPU',
               cpu,
-              model: h?.cpuName,
+              model: h?.cpuName?.replaceFirst('Qualcomm ', ''),
               caption: cpu == null
                   ? null
                   : '${(s.cpuWindowMs! / 1000).round()} s average · all cores',
             ),
-            SizedBox(height: 18),
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 18),
+              child: Divider(height: 1),
+            ),
             usage('GPU', s.gpuPercent, model: h?.gpuName),
-            SizedBox(height: 18),
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 18),
+              child: Divider(height: 1),
+            ),
             usage(
               'RAM',
               ram == null ? null : ram * 100,
@@ -546,7 +549,13 @@ class Dashboard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: TextStyle(fontSize: 16)),
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     if (model != null)
                       Text(
                         model,
@@ -557,7 +566,7 @@ class Dashboard extends StatelessWidget {
               ),
               Text(
                 percent == null ? 'Unavailable' : '${percent.round()}%',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w500),
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w600),
               ),
             ],
           ),
@@ -565,9 +574,9 @@ class Dashboard extends StatelessWidget {
             SizedBox(height: 8),
             ClipRRect(
               borderRadius: BorderRadius.circular(3),
-              child: LinearProgressIndicator(
+              child: AnimatedReadingBar(
                 value: percent / 100,
-                minHeight: 5,
+                minHeight: 6,
                 backgroundColor: p.border,
                 valueColor: AlwaysStoppedAnimation(p.metricAccent(title)),
               ),
@@ -600,19 +609,12 @@ class Dashboard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.sd_storage_outlined,
-                  size: 18,
-                  color: p.secondaryText,
-                ),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text('microSD card', style: TextStyle(fontSize: 14)),
-                ),
-                if (s.sdState == SdCardState.readOnly) tag('Read only'),
-              ],
+            SectionHeading(
+              'microSD card',
+              Icons.sd_storage_outlined,
+              trailing: s.sdState == SdCardState.readOnly
+                  ? tag('Read only')
+                  : null,
             ),
             SizedBox(height: 18),
             if (fraction == null)
@@ -645,9 +647,9 @@ class Dashboard extends StatelessWidget {
               SizedBox(height: 12),
               ClipRRect(
                 borderRadius: BorderRadius.circular(3),
-                child: LinearProgressIndicator(
+                child: AnimatedReadingBar(
                   value: fraction,
-                  minHeight: 5,
+                  minHeight: 6,
                   backgroundColor: p.border,
                   valueColor: AlwaysStoppedAnimation(p.accent),
                 ),
@@ -715,7 +717,7 @@ class DevicePage extends StatelessWidget {
         ),
         SizedBox(height: 6),
         Text(
-          'Hardware and system details.',
+          h?.displayModel ?? 'AYN Thor',
           style: TextStyle(color: secondaryText),
         ),
         SizedBox(height: 24),
@@ -724,6 +726,8 @@ class DevicePage extends StatelessWidget {
           copyLabel: 'Device stats',
           child: Column(
             children: [
+              const SectionHeading('Hardware', Icons.developer_board_outlined),
+              const SizedBox(height: 8),
               detail(
                 'Device name',
                 h?.deviceName ?? c.selected?.name ?? 'Unavailable',
@@ -768,14 +772,7 @@ class DevicePage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Firmware',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: secondaryText,
-                  letterSpacing: 0,
-                ),
-              ),
+              const SectionHeading('Firmware', Icons.system_update_alt_rounded),
               SizedBox(height: 12),
               Text(
                 h?.build ?? 'Unavailable',
@@ -790,6 +787,11 @@ class DevicePage extends StatelessWidget {
           copyLabel: 'Battery diagnostics',
           child: Column(
             children: [
+              const SectionHeading(
+                'Battery diagnostics',
+                Icons.battery_saver_outlined,
+              ),
+              const SizedBox(height: 8),
               detail(
                 'Reported current',
                 s?.currentUa == null
@@ -805,7 +807,7 @@ class DevicePage extends StatelessWidget {
               ),
               SizedBox(height: 8),
               Text(
-                'USB input power is voltage × current reported by the charging hardware. It is not the charger’s rated wattage. Remaining charge is not a battery health measurement.',
+                'USB input shows the power measured by the Thor. Remaining charge is not a battery health measurement.',
                 style: TextStyle(color: secondaryText, fontSize: 16),
               ),
             ],

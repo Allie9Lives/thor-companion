@@ -4,25 +4,25 @@ Monitor and control your AYN Thor from an iPhone or Android phone.
 
 [Downloads](https://github.com/Allie9Lives/thor-companion/releases/latest) · [Setup](docs/setup.md) · [Report a bug](https://github.com/Allie9Lives/thor-companion/issues)
 
-## Download 0.16.5
+## Download 0.16.6
 
-Install **Thor Monitor 0.16.5** on the Thor and **Thor Companion 0.16.4** on your phone. This update changes the host; the current client downloads are included.
+Install **Thor Monitor** on the Thor and **Thor Companion** on your phone. Update both apps to **0.16.6**.
 
 | Device | Download |
 | --- | --- |
-| AYN Thor | [Thor Monitor APK](https://github.com/Allie9Lives/thor-companion/releases/download/v0.16.5/Thor-Monitor-0.16.5.apk) |
-| Android phone | [Thor Companion APK](https://github.com/Allie9Lives/thor-companion/releases/download/v0.16.5/Thor-Companion-Android-0.16.4.apk) |
-| iPhone | [Thor Companion IPA](https://github.com/Allie9Lives/thor-companion/releases/download/v0.16.5/Thor-Companion-iOS-0.16.4-development.ipa) |
+| AYN Thor | [Thor Monitor APK](https://github.com/Allie9Lives/thor-companion/releases/download/v0.16.6/Thor-Monitor-0.16.6.apk) |
+| Android phone | [Thor Companion APK](https://github.com/Allie9Lives/thor-companion/releases/download/v0.16.6/Thor-Companion-Android-0.16.6.apk) |
+| iPhone | [Thor Companion IPA](https://github.com/Allie9Lives/thor-companion/releases/download/v0.16.6/Thor-Companion-iOS-0.16.6-development.ipa) |
 
 The IPA is a development build and needs valid signing or re-signing to install. Source ZIPs and checksums are in the [release](https://github.com/Allie9Lives/thor-companion/releases/latest).
 
 ## Updated in this release
 
-- Smoother host page transitions, sliding selection, scrolling, and expanding menus.
-- Animated battery and usage gauges, with larger battery and charging symbols.
-- Overview icons and storage usage percentages for internal storage and microSD.
-- Less sensitive joystick navigation with slower held repeats. D-pad behavior stays the same.
-- Two-screen controls setup and a looping lightning background during onboarding.
+- Refreshed client screens, clearer stats, consistent tiles, and smoother navigation.
+- Improved host Overview, menus, setup, and touch/controller navigation.
+- A guided Bluetooth pairing repair flow that stops repeated reconnect attempts.
+- Background protection to keep monitoring connected when the host is dismissed from Recents. Enable it through Recovery setup.
+- Built-in host update checks and optional Obtainium setup.
 
 ## New since 0.14.4
 
@@ -36,12 +36,12 @@ The IPA is a development build and needs valid signing or re-signing to install.
 Current interface with sample readings.
 
 <table>
-<tr><th>Overview</th><th>Screen recording</th></tr>
-<tr><td><img src="docs/assets/client-overview.png" alt="Battery and system readings in Thor Companion 0.16.4" width="280"></td><td><img src="docs/assets/client-recording.png" alt="Screen recording with quality and 30 or 60 FPS options" width="280"></td></tr>
-<tr><th>Focused apps</th><th>App drawer</th></tr>
-<tr><td><img src="docs/assets/client-focused-apps.png" alt="Top and bottom focused apps with centered icons" width="280"></td><td><img src="docs/assets/client-apps.png" alt="Open apps and installed apps in the remote app drawer" width="280"></td></tr>
-<tr><th>Battery insights</th><th>Thor Monitor</th></tr>
-<tr><td><img src="docs/assets/client-battery.png" alt="Battery history graph and legend" width="280"></td><td><img src="docs/assets/host-overview.png" alt="Current Thor Monitor host overview" width="320"></td></tr>
+<tr><th>Overview</th><th>Controls</th></tr>
+<tr><td><img src="docs/assets/client-overview.png" alt="Thor Companion 0.16.6 overview with sample readings" width="280"></td><td><img src="docs/assets/client-controls.png" alt="Client tools and controls" width="280"></td></tr>
+<tr><th>Settings</th><th>Themes</th></tr>
+<tr><td><img src="docs/assets/client-settings.png" alt="Client settings tiles" width="280"></td><td><img src="docs/assets/client-themes.png" alt="Light, Dark, Clear Purple and Rainbow theme previews" width="280"></td></tr>
+<tr><th>Focused apps</th><th>Thor Monitor</th></tr>
+<tr><td><img src="docs/assets/client-focused-apps.png" alt="Top and bottom focused apps with centered icons" width="280"></td><td><img src="docs/assets/host-overview.png" alt="Thor Monitor overview" width="320"></td></tr>
 </table>
 
 ## Features

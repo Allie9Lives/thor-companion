@@ -15,6 +15,8 @@ import 'about_page.dart';
 import 'battery_pages.dart';
 import 'files_page.dart';
 import 'connection_health_page.dart';
+import 'pairing_recovery.dart';
+import 'design_components.dart';
 
 void main() => runApp(ThorCompanionApp());
 
@@ -189,27 +191,38 @@ class _CompanionHomeState extends State<CompanionHome>
     builder: (context, _) => Scaffold(
       bottomNavigationBar: c.stats == null
           ? null
-          : NavigationBar(
-              backgroundColor: background,
-              indicatorColor: accent.withValues(alpha: 0.12),
-              selectedIndex: tab,
-              onDestinationSelected: (i) => setState(() => tab = i),
-              destinations: [
-                NavigationDestination(
-                  icon: Icon(Icons.space_dashboard_outlined),
-                  selectedIcon: Icon(Icons.space_dashboard),
-                  label: 'Overview',
+          : Container(
+              decoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(
+                    color: AppPalette.of(context).border.withValues(alpha: .7),
+                  ),
                 ),
-                NavigationDestination(
-                  icon: Icon(Icons.developer_board_outlined),
-                  selectedIcon: Icon(Icons.developer_board),
-                  label: 'Device',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.tune),
-                  label: 'Controls',
-                ),
-              ],
+              ),
+              child: NavigationBar(
+                height: 72,
+                animationDuration: motionDuration(context, 300),
+                backgroundColor: background,
+                indicatorColor: accent.withValues(alpha: 0.12),
+                selectedIndex: tab,
+                onDestinationSelected: (i) => setState(() => tab = i),
+                destinations: [
+                  NavigationDestination(
+                    icon: Icon(Icons.space_dashboard_outlined),
+                    selectedIcon: Icon(Icons.space_dashboard),
+                    label: 'Overview',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.developer_board_outlined),
+                    selectedIcon: Icon(Icons.developer_board),
+                    label: 'Device',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.tune),
+                    label: 'Controls',
+                  ),
+                ],
+              ),
             ),
       body: SafeArea(
         child: Center(
@@ -221,13 +234,21 @@ class _CompanionHomeState extends State<CompanionHome>
                 key: PageStorageKey(
                   c.stats == null ? 'setup-scroll' : 'tab-scroll-$tab',
                 ),
-                padding: EdgeInsets.fromLTRB(24, 18, 24, 24),
+                padding: EdgeInsets.fromLTRB(
+                  MediaQuery.sizeOf(context).width < 370 ? 18 : 22,
+                  18,
+                  MediaQuery.sizeOf(context).width < 370 ? 18 : 22,
+                  28,
+                ),
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
+                ),
                 children: [
                   Row(
                     children: [
                       Container(
-                        width: 42,
-                        height: 42,
+                        width: 38,
+                        height: 38,
                         decoration: BoxDecoration(
                           color: accent,
                           borderRadius: BorderRadius.circular(13),
@@ -247,14 +268,24 @@ class _CompanionHomeState extends State<CompanionHome>
                         child: Text(
                           'Thor Companion',
                           style: TextStyle(
-                            fontSize: 20,
+                            fontSize: 18,
                             fontWeight: FontWeight.w600,
+                            letterSpacing: -.25,
                           ),
                         ),
                       ),
                       IconButton(
                         tooltip: 'Appearance and settings',
                         onPressed: settings,
+                        style: IconButton.styleFrom(
+                          backgroundColor: AppPalette.of(context).card,
+                          side: BorderSide(
+                            color: AppPalette.of(context).border,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
                         icon: Icon(
                           Icons.settings_outlined,
                           color: secondaryText,
@@ -280,20 +311,42 @@ class _CompanionHomeState extends State<CompanionHome>
                   ],
                   if (c.isDemo) ...[
                     SizedBox(height: 18),
-                    notice(
-                      'Demo data',
-                      'No device connected.',
-                      trailing: widget.onExitDemo == null
-                          ? null
-                          : TextButton(
-                              onPressed: widget.onExitDemo,
-                              child: Text('Exit'),
-                            ),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.science_outlined,
+                          size: 18,
+                          color: secondaryText,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Demo data',
+                          style: TextStyle(color: secondaryText, fontSize: 14),
+                        ),
+                        const Spacer(),
+                        if (widget.onExitDemo != null)
+                          TextButton(
+                            onPressed: widget.onExitDemo,
+                            child: const Text('Exit'),
+                          ),
+                      ],
                     ),
                   ],
                   if (c.error != null) ...[
                     SizedBox(height: 18),
-                    notice('Connection', c.error!, warning: true),
+                    notice(
+                      c.pairingRecoveryRequired
+                          ? 'Pairing needs repair'
+                          : 'Connection',
+                      c.error!,
+                      warning: true,
+                      trailing: c.pairingRecoveryRequired
+                          ? TextButton(
+                              onPressed: repairPairing,
+                              child: const Text('Fix connection'),
+                            )
+                          : null,
+                    ),
                   ],
                   if (c.retryAt != null) ...[
                     SizedBox(height: 12),
@@ -305,13 +358,15 @@ class _CompanionHomeState extends State<CompanionHome>
                   SizedBox(height: 26),
                   TweenAnimationBuilder<double>(
                     key: ValueKey(c.stats == null ? 'setup' : 'tab-$tab'),
-                    tween: Tween(begin: .94, end: 1),
+                    tween: Tween(begin: 0, end: 1),
                     duration: MediaQuery.disableAnimationsOf(context)
                         ? Duration.zero
-                        : const Duration(milliseconds: 160),
-                    curve: Curves.easeOut,
-                    builder: (context, opacity, child) =>
-                        Opacity(opacity: opacity, child: child),
+                        : const Duration(milliseconds: 300),
+                    curve: thorCurve,
+                    builder: (context, opacity, child) => Transform.translate(
+                      offset: Offset(0, 10 * (1 - opacity)),
+                      child: Opacity(opacity: opacity, child: child),
+                    ),
                     child: c.stats == null
                         ? setup()
                         : tab == 0
@@ -328,6 +383,12 @@ class _CompanionHomeState extends State<CompanionHome>
       ),
     ),
   );
+
+  Future<void> repairPairing() async {
+    if (!await showPairingRecovery(context) || !mounted) return;
+    setState(() => tab = 0);
+    await c.scanAfterPairingReset();
+  }
 
   Widget setup() => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -379,7 +440,9 @@ class _CompanionHomeState extends State<CompanionHome>
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: c.busy || c.reading
+                onPressed: c.pairingRecoveryRequired
+                    ? repairPairing
+                    : c.busy || c.reading
                     ? null
                     : () => c.connected
                           ? c.refresh()
@@ -397,7 +460,9 @@ class _CompanionHomeState extends State<CompanionHome>
                       )
                     : Icon(Icons.bluetooth_searching, size: 20),
                 label: Text(
-                  c.reading
+                  c.pairingRecoveryRequired
+                      ? 'Fix connection'
+                      : c.reading
                       ? 'Reading device…'
                       : c.connected
                       ? 'Refresh'
@@ -434,8 +499,14 @@ class _CompanionHomeState extends State<CompanionHome>
               SizedBox(width: 12),
               Expanded(child: Text(c.remembered!.name)),
               TextButton(
-                onPressed: c.busy ? null : () => c.connect(c.remembered!),
-                child: Text('Reconnect'),
+                onPressed: c.pairingRecoveryRequired
+                    ? repairPairing
+                    : c.busy
+                    ? null
+                    : () => c.connect(c.remembered!),
+                child: Text(
+                  c.pairingRecoveryRequired ? 'Fix connection' : 'Reconnect',
+                ),
               ),
               PopupMenuButton<String>(
                 tooltip: 'Saved device options',
@@ -510,20 +581,32 @@ class _CompanionHomeState extends State<CompanionHome>
   Widget step(String number, String title, String description) => Row(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text(
-        number,
-        style: TextStyle(
-          color: accent.withValues(alpha: 0.6),
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
+      Semantics(
+        label: 'Step $number',
+        child: Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: .08),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(
+            switch (number) {
+              '01' => Icons.power_settings_new_rounded,
+              '02' => Icons.bluetooth_rounded,
+              _ => Icons.link_rounded,
+            },
+            size: 21,
+            color: accent,
+          ),
         ),
       ),
-      SizedBox(width: 16),
+      const SizedBox(width: 14),
       Expanded(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: TextStyle(fontWeight: FontWeight.w500)),
+            Text(title, style: TextStyle(fontWeight: FontWeight.w600)),
             SizedBox(height: 3),
             Text(
               description,

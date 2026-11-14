@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'companion_controller.dart';
 import 'ui.dart';
+import 'design_components.dart';
 
 class SettingsSheet extends StatefulWidget {
   const SettingsSheet({
@@ -41,8 +42,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
           alignment: Alignment.topCenter,
           duration: MediaQuery.disableAnimationsOf(context)
               ? Duration.zero
-              : const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
+              : const Duration(milliseconds: 240),
+          curve: thorCurve,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -70,29 +71,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
               ),
               const SizedBox(height: 18),
               if (appearancePage) ...[
-                grid(
-                  choices
-                      .map(
-                        (choice) => (
-                          choice.$2,
-                          choice.$3,
-                          choice.$1 == selected
-                              ? 'Selected'
-                              : choice.$1 == AppAppearance.system
-                              ? 'Follow iPhone appearance'
-                              : 'Use ${choice.$2}',
-                          () {
-                            widget.onAppearanceChanged(choice.$1);
-                            setState(() {
-                              selected = choice.$1;
-                              appearancePage = false;
-                            });
-                          },
-                        ),
-                      )
-                      .toList(),
-                  selectedLabel: choices.firstWhere((c) => c.$1 == selected).$2,
-                ),
+                appearanceChoices(),
               ] else ...[
                 AnimatedBuilder(
                   animation: widget.controller,
@@ -180,6 +159,36 @@ class _SettingsSheetState extends State<SettingsSheet> {
                     () => widget.onAction('health'),
                   ),
                 ]),
+                const SizedBox(height: 12),
+                surface(
+                  padding: EdgeInsets.zero,
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 8,
+                    ),
+                    leading: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: p.accent.withValues(alpha: .08),
+                        borderRadius: BorderRadius.circular(11),
+                      ),
+                      child: Icon(
+                        Icons.info_outline,
+                        color: p.accent,
+                        size: 21,
+                      ),
+                    ),
+                    title: const Text(
+                      'About',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: const Text('Thor Companion · Allie Stark'),
+                    trailing: const Icon(Icons.chevron_right, size: 20),
+                    onTap: () => widget.onAction('about'),
+                  ),
+                ),
                 const SizedBox(height: 22),
                 Divider(color: p.border, height: 1),
                 const SizedBox(height: 8),
@@ -197,16 +206,161 @@ class _SettingsSheetState extends State<SettingsSheet> {
                   trailing: const Icon(Icons.chevron_right, size: 20),
                   onTap: () => widget.onAction('credits'),
                 ),
-                ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                  leading: const Icon(Icons.info_outline),
-                  title: const Text('About'),
-                  trailing: const Icon(Icons.chevron_right, size: 20),
-                  onTap: () => widget.onAction('about'),
-                ),
               ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget appearanceChoices() => LayoutBuilder(
+    builder: (context, box) {
+      final p = AppPalette.of(context),
+          scale = MediaQuery.textScalerOf(context);
+      final columns = box.maxWidth >= 290 && scale.scale(16) <= 22 ? 2 : 1;
+      final width = (box.maxWidth - (columns - 1) * 12) / columns;
+      void choose(AppAppearance mode) {
+        widget.onAppearanceChanged(mode);
+        setState(() => selected = mode);
+      }
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          OutlinedButton.icon(
+            onPressed: () => choose(AppAppearance.system),
+            icon: Icon(
+              selected == AppAppearance.system
+                  ? Icons.check_circle_outline
+                  : Icons.brightness_auto_outlined,
+            ),
+            label: const Text('System default'),
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              for (final choice in choices.where(
+                (c) => c.$1 != AppAppearance.system,
+              ))
+                SizedBox(
+                  width: width,
+                  height: (58 + 12 + scale.scale(16) * 1.2 + 24).clamp(
+                    126.0,
+                    240.0,
+                  ),
+                  child: OutlinedButton(
+                    onPressed: () => choose(choice.$1),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.all(12),
+                      side: BorderSide(
+                        color: selected == choice.$1 ? p.accent : p.border,
+                        width: selected == choice.$1 ? 1.5 : 1,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(child: _themePreview(choice.$1)),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                choice.$2,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: p.foreground,
+                                ),
+                              ),
+                            ),
+                            if (selected == choice.$1)
+                              Icon(
+                                Icons.check_circle_rounded,
+                                size: 17,
+                                color: p.accent,
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      );
+    },
+  );
+
+  Widget _themePreview(AppAppearance mode) {
+    final palette = switch (mode) {
+      AppAppearance.light => AppPalette.light,
+      AppAppearance.dark => AppPalette.dark,
+      AppAppearance.clearPurple => AppPalette.clearPurple,
+      _ => AppPalette.rainbow,
+    };
+    return ExcludeSemantics(
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: palette.background,
+          border: Border.all(color: palette.border),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 36,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: palette.foreground.withValues(alpha: .7),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    width: 24,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: palette.secondaryText.withValues(alpha: .45),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  if (mode == AppAppearance.rainbow) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        for (final color in palette.rainbowColors)
+                          Container(width: 8, height: 3, color: color),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                value: .72,
+                strokeWidth: 3,
+                color: palette.accent,
+                backgroundColor: palette.border,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -222,8 +376,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
       final columns = box.maxWidth >= 290 && scaler.scale(16) <= 22 ? 2 : 1;
       final width = (box.maxWidth - (columns - 1) * 10) / columns;
       final height =
-          (24 + 8 + scaler.scale(16) * 2.4 + 4 + scaler.scale(13) * 1.2 + 24)
-              .clamp(126.0, 340.0);
+          (36 + 12 + scaler.scale(16) * 2.4 + 5 + scaler.scale(13) * 1.25 + 40)
+              .clamp(144.0, 360.0);
       return Wrap(
         spacing: 10,
         runSpacing: 10,
@@ -232,65 +386,13 @@ class _SettingsSheetState extends State<SettingsSheet> {
             SizedBox(
               width: width,
               height: height,
-              child: OutlinedButton(
+              child: ActionTile(
+                label: actions[i].$1,
+                icon: actions[i].$2,
+                subtitle: actions[i].$3,
                 onPressed: actions[i].$4,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: p.foreground,
-                  backgroundColor: actions[i].$1 == selectedLabel
-                      ? p.accent.withValues(alpha: .10)
-                      : p.card,
-                  side: BorderSide(
-                    color: actions[i].$1 == selectedLabel ? p.accent : p.border,
-                    width: actions[i].$1 == selectedLabel ? 1.5 : 1,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 12,
-                  ),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      actions[i].$1 == selectedLabel
-                          ? Icons.check_circle_outline
-                          : actions[i].$2,
-                      size: 24,
-                      color: p.isRainbow ? p.rainbowColors[i % 4] : p.accent,
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      height: scaler.scale(16) * 2.4,
-                      child: Center(
-                        child: Text(
-                          actions[i].$1,
-                          textAlign: TextAlign.center,
-                          maxLines: 2,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            height: 1.2,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      actions[i].$3,
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13,
-                        height: 1.2,
-                        color: p.secondaryText,
-                      ),
-                    ),
-                  ],
-                ),
+                selected: actions[i].$1 == selectedLabel,
+                color: p.isRainbow ? p.rainbowColors[i % 4] : p.accent,
               ),
             ),
         ],

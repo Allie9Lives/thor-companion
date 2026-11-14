@@ -15,7 +15,7 @@ final class OnboardingBackdrop extends View {
  private long lastFrame;
  private double phase;
  OnboardingBackdrop(Context context,int color){
-  super(context);density=getResources().getDisplayMetrics().density;
+  super(context);phase=(android.os.SystemClock.elapsedRealtime()%18000)/18000.0;density=getResources().getDisplayMetrics().density;
   paint.setColor(color);paint.setAlpha(19);
   bolt.moveTo(3,-18);bolt.lineTo(-11,3);bolt.lineTo(-2,3);
   bolt.lineTo(-5,18);bolt.lineTo(12,-5);bolt.lineTo(3,-5);bolt.close();

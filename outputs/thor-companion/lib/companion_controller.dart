@@ -47,15 +47,17 @@ class CompanionController extends ChangeNotifier {
         if (value == RadioState.off ||
             value == RadioState.unauthorized ||
             value == RadioState.unavailable) {
-          error = radioMessage;
+          if (!_manualRecoveryRequired) error = radioMessage;
           unawaited(_radioUnavailable());
         }
         if (value == RadioState.ready) _scheduleReconnect(immediate: true);
         _notify();
       },
       onError: (Object e) {
-        error =
-            'Bluetooth is unavailable. Check your phone’s Bluetooth settings.';
+        if (!_manualRecoveryRequired) {
+          error =
+              'Bluetooth is unavailable. Check your phone’s Bluetooth settings.';
+        }
         _notify();
       },
     );
@@ -165,7 +167,7 @@ class CompanionController extends ChangeNotifier {
   bool _wantsConnection = false, _foreground = true;
   bool _manualRecoveryRequired = false;
   Future<void>? _restoration;
-  bool _serviceRecoveryAttempted = false;
+  bool get pairingRecoveryRequired => _manualRecoveryRequired;
   int retryAttempt = 0;
   int _intentEpoch = 0;
   DateTime? retryAt;
@@ -1662,7 +1664,6 @@ class CompanionController extends ChangeNotifier {
       ++_intentEpoch;
       retryAttempt = 0;
       _manualRecoveryRequired = false;
-      _serviceRecoveryAttempted = false;
     }
     unawaited(_saveConnectionIntent());
     if (connected && selected?.id == device.id) {
@@ -1814,15 +1815,12 @@ class CompanionController extends ChangeNotifier {
       if (session == _session) {
         lastFailure = e;
         logBle('Thor BLE setup: $e');
-        if (e is StaleServiceCache &&
-            !_serviceRecoveryAttempted &&
-            automaticReconnect &&
-            _wantsConnection) {
-          _serviceRecoveryAttempted = true;
-          _linkLost(session, 'Refreshing Bluetooth connection…');
+        if (e is StaleServiceCache) {
+          _manualRecoveryRequired = true;
+          _cancelRetry();
+          _linkLost(session, e.message);
           return;
         }
-        _manualRecoveryRequired = e is StaleServiceCache;
         notificationsRequested = false;
         error = _message(
           e,
@@ -1883,7 +1881,6 @@ class CompanionController extends ChangeNotifier {
       await _observeBattery(next, deviceId);
       if (_disposed || session != _session) return false;
       _freshThisConnection = true;
-      _serviceRecoveryAttempted = false;
       receivedAt = DateTime.now();
       receivedCount++;
       retryAttempt = 0;
@@ -2003,6 +2000,13 @@ class CompanionController extends ChangeNotifier {
     _freshThisConnection = false;
     unawaited(_publishWidget());
     _notify();
+  }
+
+  Future<void> scanAfterPairingReset() async {
+    // iOS system pairing must be removed by the user before this step.
+    await forget();
+    _manualRecoveryRequired = false;
+    await startScan();
   }
 
   Future<void> forget() async {

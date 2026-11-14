@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/services.dart';
 
 const iconBackground = Color(0xFF18181B);
@@ -173,10 +174,33 @@ ThemeData appTheme(
   );
   return ThemeData(
     useMaterial3: true,
+    splashFactory: NoSplash.splashFactory,
+    highlightColor: p.accent.withValues(alpha: .07),
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {
+        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+        TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+      },
+    ),
     extensions: [p],
     brightness: brightness,
     colorScheme: scheme,
     scaffoldBackgroundColor: p.background,
+    appBarTheme: AppBarTheme(
+      backgroundColor: p.background,
+      foregroundColor: p.foreground,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      centerTitle: false,
+      titleTextStyle: TextStyle(
+        color: p.foreground,
+        fontSize: 20,
+        fontWeight: FontWeight.w600,
+        letterSpacing: -.3,
+      ),
+    ),
     textTheme: TextTheme(
       labelLarge: const TextStyle(fontSize: 16),
       labelMedium: const TextStyle(fontSize: 14),
@@ -239,6 +263,10 @@ ThemeData appTheme(
     bottomSheetTheme: BottomSheetThemeData(
       backgroundColor: p.card,
       surfaceTintColor: Colors.transparent,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
     ),
     dialogTheme: DialogThemeData(
       backgroundColor: p.card,
@@ -252,6 +280,7 @@ Widget surface({
   EdgeInsets padding = const EdgeInsets.all(18),
   String? copyText,
   String copyLabel = 'Stats',
+  VoidCallback? onTap,
 }) => Builder(
   builder: (context) {
     final p = AppPalette.of(context);
@@ -262,7 +291,11 @@ Widget surface({
         side: BorderSide(color: p.border),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Padding(padding: padding, child: child),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Padding(padding: padding, child: child),
+      ),
     );
     if (copyText == null) return card;
     return Semantics(

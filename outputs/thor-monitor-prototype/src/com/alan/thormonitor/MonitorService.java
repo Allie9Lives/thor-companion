@@ -438,10 +438,11 @@ public class MonitorService extends Service {
         if(i!=null && "STOP_FTP".equals(i.getAction())){FtpAccess.stop();if(monitoringStarted)return START_STICKY;i=null;}
         if(i!=null && "STOP_FIND".equals(i.getAction())){FindThor.requestStop();if(monitoringStarted)return START_STICKY;i=null;}
         if (i != null && "STOP".equals(i.getAction())) {
-            getSharedPreferences("monitor",0).edit().putBoolean("monitor_wanted",false).apply();stopSelf();return START_NOT_STICKY;
+            getSharedPreferences("monitor",0).edit().putBoolean("monitor_wanted",false).apply();ServiceRecovery.cancel(this);stopSelf();return START_NOT_STICKY;
         }
         boolean timed=i!=null && i.getBooleanExtra("active_test",false);
         if(i==null && !getSharedPreferences("monitor",0).getBoolean("monitor_wanted",false)){stopSelf();return START_NOT_STICKY;}
+        HostBackgroundProtection.apply(this);
         monitoringStarted=true;
         continuous=!timed && getSharedPreferences("monitor",0).getBoolean("always_on",true);
         getSharedPreferences("monitor",0).edit().putBoolean("monitor_wanted",!timed).putBoolean("always_on",continuous).apply();
@@ -469,13 +470,15 @@ public class MonitorService extends Service {
     }
     @Override public void onTaskRemoved(Intent rootIntent){
         event("task_dismissed","Foreground monitoring continues independently of its activity");
-        ServiceRecovery.schedule(this);super.onTaskRemoved(rootIntent);
+        // Removing the UI task must not restart Bluetooth or wake the CPU on a timer.
+        // This foreground START_STICKY service remains active on its own.
+        super.onTaskRemoved(rootIntent);
     }
     @Override public void onConfigurationChanged(android.content.res.Configuration configuration){super.onConfigurationChanged(configuration);LocatorStopPanel.refresh(this);}
     @Override public void onDestroy() {
         closing = true;
         if(instance==this)instance=null;
-        FindThor.stopNow();RecordingBroker.stopCurrentAsync(this);FileAccess.stop();ServiceRecovery.schedule(this);
+        FindThor.stopNow();RecordingBroker.stopCurrentAsync(this);FileAccess.stop();if(ServiceRecovery.wanted(this))ServiceRecovery.schedule(this);else ServiceRecovery.cancel(this);
         resetNotifications();
         running = false;
         timeoutHandler.removeCallbacks(testTimeout);

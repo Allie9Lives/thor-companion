@@ -21,14 +21,17 @@ import java.util.*;
 import java.util.concurrent.*;
 
 public class MainActivity extends Activity {
+    private final java.util.HashMap<String,String> focusMemory=new java.util.HashMap<>();
+    private final java.util.HashSet<String> expandedSections=new java.util.HashSet<>();
     private final Handler handler=new Handler(Looper.getMainLooper());
     private final ExecutorService reader=Executors.newSingleThreadExecutor();
     private final Telemetry telemetry=new Telemetry();
     private LinearLayout page;
     private SharedPreferences prefs;
-    private int screen=0,step=0,recoveryReturn=0,renderedSetupStep=-1; // overview=0, setup=1, recovery=2, settings=3, insights=4
+    private int screen=0,step=0,recoveryReturn=0,updatesReturn=3,renderedSetupStep=-1; // overview=0, setup=1, recovery=2, settings=3, insights=4
     private boolean dark,reading=false,repairing=false;
     private OnboardingBackdrop onboardingBackdrop;
+    private HostUpdatesView updatesView;
     private HostOverviewView overview;private HostBatteryInsightsView insights;
     private java.util.List<BatterySample> historyCache=java.util.Collections.emptyList();private long historyReadAt;private String historyError;private java.util.List<long[]> sleepCache=java.util.Collections.emptyList();
     private int renderedPairVersion=0;
@@ -40,16 +43,16 @@ public class MainActivity extends Activity {
     private final Runnable refresh=new Runnable(){public void run(){update();handler.postDelayed(this,2000);}};
 
     @Override public void onCreate(Bundle b) {
-        super.onCreate(b);FindThor.recoverVolume(this);prefs=getSharedPreferences("monitor",0);
+        super.onCreate(b);if(b!=null&&b.getBundle("focusMemory")!=null){Bundle saved=b.getBundle("focusMemory");for(String key:saved.keySet()){String value=saved.getString(key);if(value!=null)focusMemory.put(key,value);}}if(b!=null&&b.getStringArrayList("expandedSections")!=null)expandedSections.addAll(b.getStringArrayList("expandedSections"));FindThor.recoverVolume(this);prefs=getSharedPreferences("monitor",0);
         screen=b!=null?b.getInt("screen"):prefs.getBoolean("setup_complete",false)?0:prefs.getInt("setup_screen",1);
         boolean oldFlow=prefs.contains("setup_step")&&prefs.getInt("setup_flow_version",1)<2;
         step=Math.max(0,Math.min(5,(b!=null?b.getInt("step"):prefs.getInt("setup_step",0))+(oldFlow?1:0)));
         prefs.edit().putInt("setup_flow_version",2).apply();
         try{ThorControls.socketName(this);}catch(Exception ignored){}
-        recoveryReturn=b==null?0:b.getInt("recoveryReturn",0);
+        recoveryReturn=b==null?0:b.getInt("recoveryReturn",0);updatesReturn=b==null?3:b.getInt("updatesReturn",3);
         build();
     }
-    @Override public void onSaveInstanceState(Bundle b){b.putInt("screen",screen);b.putInt("step",step);b.putInt("recoveryReturn",recoveryReturn);super.onSaveInstanceState(b);}
+    @Override public void onSaveInstanceState(Bundle b){rememberFocus();Bundle focusState=new Bundle();for(java.util.Map.Entry<String,String> item:focusMemory.entrySet())focusState.putString(item.getKey(),item.getValue());b.putBundle("focusMemory",focusState);b.putInt("screen",screen);b.putInt("step",step);b.putInt("recoveryReturn",recoveryReturn);b.putInt("updatesReturn",updatesReturn);b.putStringArrayList("expandedSections",new java.util.ArrayList<>(expandedSections));super.onSaveInstanceState(b);}
     private int dp(float n){return Math.round(n*getResources().getDisplayMetrics().density);}
     private boolean granted(String name){return checkSelfPermission(name)==PackageManager.PERMISSION_GRANTED;}
     private boolean nearby(){return granted(Manifest.permission.BLUETOOTH_CONNECT)&&granted(Manifest.permission.BLUETOOTH_ADVERTISE);}
@@ -59,21 +62,22 @@ public class MainActivity extends Activity {
         HostPalette p=HostTheme.current(this);dark=p.dark;bg=p.bg;card=p.card;ink=p.ink;muted=p.muted;border=p.border;accent=p.accent;onAccent=p.onAccent;
     }
     private GradientDrawable shape(int color,int radius,boolean outline){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));if(outline)d.setStroke(dp(1),border);return d;}
-    private TextView text(String value,int size,boolean bold){TextView t=new TextView(this);t.setText(value);t.setTextSize(size);t.setTextColor(ink);t.setFontFeatureSettings("tnum");t.setLineSpacing(dp(3),1);if(bold)t.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));return t;}
+    private TextView text(String value,int size,boolean bold){TextView t=new TextView(this);t.setText(value);t.setTextSize(size);t.setIncludeFontPadding(false);t.setLetterSpacing(size>=24?-.02f:0);t.setTextColor(ink);t.setFontFeatureSettings("tnum");t.setLineSpacing(dp(3),1);if(bold)t.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));return t;}
     private TextView body(LinearLayout parent,String value){TextView t=text(value,16,false);t.setTextColor(muted);parent.addView(t);return t;}
     private void gap(LinearLayout p,int h){Space s=new Space(this);p.addView(s,new LinearLayout.LayoutParams(1,dp(h)));}
     private ImageView glyph(String name,int size){ImageView view=new ImageView(this);view.setImageResource(getResources().getIdentifier("ic_host_"+name,"drawable",getPackageName()));view.setImageTintList(ColorStateList.valueOf(accent));view.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);view.setLayoutParams(new LinearLayout.LayoutParams(dp(size),dp(size)));return view;}
     private String sectionIcon(String title){String t=title.toLowerCase(java.util.Locale.ROOT);if(t.contains("bluetooth"))return "bluetooth";if(t.contains("notification"))return "bell";if(t.contains("wi-fi")||t.contains("network")||t.contains("file"))return "wifi";if(t.contains("recover")||t.contains("pair")||t.contains("debug"))return "shield";if(t.contains("keyboard"))return "keyboard";if(t.contains("find"))return "locator";if(t.contains("appearance")||t.contains("color"))return "palette";if(t.contains("battery")||t.contains("background")||t.contains("overnight")||t.contains("cpu"))return "moon";return "options";}
     private void cardTitle(LinearLayout parent,String title){LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.addView(glyph(sectionIcon(title),22));TextView label=text(title,18,true);label.setPadding(dp(10),0,0,0);row.addView(label,new LinearLayout.LayoutParams(0,-2,1));parent.addView(row);gap(parent,12);}
     private LinearLayout disclosure(String title,String icon,String summary){
+        final String sectionKey=screen+":"+(screen==1?step:0)+":"+title;
         LinearLayout cardView=box(null);cardView.setPadding(0,0,0,0);
-        LinearLayout heading=new LinearLayout(this);heading.setGravity(Gravity.CENTER_VERTICAL);heading.setMinimumHeight(dp(78));heading.setPadding(dp(20),dp(16),dp(20),dp(16));heading.addView(glyph(icon,24));
-        LinearLayout words=new LinearLayout(this);words.setOrientation(LinearLayout.VERTICAL);words.setPadding(dp(12),0,dp(12),0);words.addView(text(title,18,true));if(summary!=null){TextView subtitle=text(summary,14,false);subtitle.setTextColor(muted);words.addView(subtitle);}heading.addView(words,new LinearLayout.LayoutParams(0,-2,1));ImageView arrow=glyph("chevron",20);heading.addView(arrow);cardView.addView(heading);
+        LinearLayout heading=new LinearLayout(this);heading.setGravity(Gravity.CENTER_VERTICAL);heading.setMinimumHeight(dp(78));heading.setPadding(dp(20),dp(16),dp(20),dp(16));ImageView sectionGlyph=glyph(icon,40);sectionGlyph.setPadding(dp(9),dp(9),dp(9),dp(9));sectionGlyph.setBackground(shape(bg,12,false));heading.addView(sectionGlyph);
+        LinearLayout words=new LinearLayout(this);words.setOrientation(LinearLayout.VERTICAL);words.setPadding(dp(12),0,dp(12),0);words.addView(text(title,18,true));if(summary!=null){TextView subtitle=text(summary,14,false);subtitle.setTextColor(muted);subtitle.setPadding(0,dp(4),0,0);words.addView(subtitle);}heading.addView(words,new LinearLayout.LayoutParams(0,-2,1));ImageView arrow=glyph("chevron",18);arrow.setImageTintList(ColorStateList.valueOf(muted));heading.addView(arrow);cardView.addView(heading);
         HostMotion.style(heading,Color.TRANSPARENT,accent,border,22,false);heading.setFocusable(true);heading.setContentDescription(title+", show options");
-        LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(20),0,dp(20),dp(18));content.setVisibility(View.GONE);cardView.addView(content);
+        LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(20),0,dp(20),dp(18));boolean initiallyOpen=expandedSections.contains(sectionKey);content.setVisibility(initiallyOpen?View.VISIBLE:View.GONE);heading.setSelected(initiallyOpen);heading.setContentDescription(title+(initiallyOpen?", hide options":", show options"));arrow.setRotation(initiallyOpen?180:0);cardView.addView(content);
         final android.animation.ValueAnimator[] motion={null};
         heading.setOnClickListener(v->{
-            boolean open=!heading.isSelected();heading.setSelected(open);if(motion[0]!=null)motion[0].cancel();
+            boolean open=!heading.isSelected();heading.setSelected(open);if(open)expandedSections.add(sectionKey);else expandedSections.remove(sectionKey);if(motion[0]!=null)motion[0].cancel();
             int from=content.getVisibility()==View.VISIBLE?content.getHeight():0;
             float fromAlpha=from==0?0:content.getAlpha(),fromY=from==0?-dp(6):content.getTranslationY();
             content.setVisibility(View.VISIBLE);content.measure(View.MeasureSpec.makeMeasureSpec(cardView.getWidth(),View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED));int target=open?content.getMeasuredHeight():0;
@@ -106,9 +110,20 @@ public class MainActivity extends Activity {
         if(title!=null)cardTitle(b,title);return b;
     }
     private Button button(LinearLayout parent,String label,boolean filled,Runnable action){
-        Button b=new Button(this);b.setText(label);b.setAllCaps(false);b.setTextSize(16);b.setTypeface(Typeface.create("sans-serif-medium",0));b.setTextColor(filled?onAccent:ink);
+        Button b=new Button(this);b.setText(label);b.setAllCaps(false);b.setTextSize(16);b.setIncludeFontPadding(false);b.setTypeface(Typeface.create("sans-serif-medium",0));b.setTextColor(filled?onAccent:ink);
         HostMotion.style(b,filled?accent:card,filled?onAccent:accent,border,14,!filled);b.setStateListAnimator(null);b.setMinWidth(0);b.setPadding(dp(16),dp(12),dp(16),dp(12));b.setMinimumHeight(dp(50));
-        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=dp(12);lp.bottomMargin=dp(4);parent.addView(b,lp);b.setOnClickListener(v->action.run());return b;
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=dp(10);lp.bottomMargin=dp(2);parent.addView(b,lp);b.setOnClickListener(v->action.run());return b;
+    }
+    private LinearLayout navigationGroup(String title){
+        gap(page,12);TextView label=text(title,14,true);label.setTextColor(muted);label.setPadding(dp(4),0,0,dp(10));page.addView(label);
+        LinearLayout group=box(null);group.setPadding(dp(4),dp(4),dp(4),dp(4));return group;
+    }
+    private LinearLayout navigationRow(LinearLayout group,String title,String summary,String icon,boolean danger,Runnable action){
+        if(group.getChildCount()>0){View divider=new View(this);divider.setBackgroundColor(border);LinearLayout.LayoutParams line=new LinearLayout.LayoutParams(-1,dp(1));line.leftMargin=dp(68);line.rightMargin=dp(16);group.addView(divider,line);}
+        LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(16),dp(14),dp(16),dp(14));row.setMinimumHeight(dp(76));
+        ImageView image=glyph(icon,40);image.setPadding(dp(9),dp(9),dp(9),dp(9));image.setBackground(shape(bg,12,false));if(danger)image.setImageTintList(ColorStateList.valueOf(dark?0xFFFFA7A7:0xFFAD3030));row.addView(image);
+        LinearLayout words=new LinearLayout(this);words.setOrientation(LinearLayout.VERTICAL);words.setPadding(dp(12),0,dp(12),0);TextView name=text(title,17,true);if(danger)name.setTextColor(dark?0xFFFFA7A7:0xFFAD3030);words.addView(name);if(summary!=null){TextView detail=text(summary,14,false);detail.setTextColor(muted);detail.setPadding(0,dp(4),0,0);words.addView(detail);}row.addView(words,new LinearLayout.LayoutParams(0,-2,1));
+        ImageView arrow=glyph("chevron",18);arrow.setRotation(-90);arrow.setImageTintList(ColorStateList.valueOf(muted));row.addView(arrow);HostMotion.style(row,Color.TRANSPARENT,accent,border,16,false);row.setContentDescription(title);row.setOnClickListener(v->action.run());group.addView(row,new LinearLayout.LayoutParams(-1,-2));return row;
     }
     private void toggle(LinearLayout parent,String title,String explanation,String key,boolean initial){
         LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);TextView label=text(title,16,true);label.setPadding(0,0,dp(16),0);row.addView(label,new LinearLayout.LayoutParams(0,-2,1));
@@ -116,30 +131,34 @@ public class MainActivity extends Activity {
         s.setThumbTintList(new ColorStateList(new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},new int[]{onAccent,ink}));
         s.setTrackTintList(new ColorStateList(new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},new int[]{accent,border}));row.addView(s);row.setPadding(dp(10),dp(8),dp(10),dp(8));row.setMinimumHeight(dp(56));row.setFocusable(true);row.setContentDescription(title);s.setFocusable(false);HostMotion.style(row,Color.TRANSPARENT,accent,border,14,false);row.setOnClickListener(v->s.setChecked(!s.isChecked()));parent.addView(row);
         body(parent,explanation);gap(parent,8);
-        s.setOnCheckedChangeListener((v,checked)->{prefs.edit().putBoolean(key,checked).apply();if(key.equals("files_enabled")){try{FileAccess.set(this,checked);}catch(Exception e){Toast.makeText(this,"Could not start file access",Toast.LENGTH_LONG).show();}}else if(key.equals("rest_keep_plugged"))MonitorService.restChanged();else if(key.equals("recover_controls"))Recovery.enable(this,checked);else if(key.equals("always_on")&&MonitorService.running)startMonitoring(false);});
+        s.setOnCheckedChangeListener((v,checked)->{prefs.edit().putBoolean(key,checked).apply();if(key.equals("files_enabled")){try{FileAccess.set(this,checked);}catch(Exception e){Toast.makeText(this,"Could not start file access",Toast.LENGTH_LONG).show();}}else if(key.equals("protect_recents")){HostBackgroundProtection.apply(this);Recovery.attempt(this);handler.post(this::build);}else if(key.equals("rest_keep_plugged"))MonitorService.restChanged();else if(key.equals("recover_controls"))Recovery.enable(this,checked);else if(key.equals("always_on")&&MonitorService.running)startMonitoring(false);});
     }
+    private String focusKey(int page,int setupStep){return page+":"+(page==1?setupStep:-1);}
+    private String focusLabel(View view){if(view instanceof EditText)return "input:"+view.getId();if(view instanceof TextView)return ((TextView)view).getText().toString();return view!=null&&view.getContentDescription()!=null?view.getContentDescription().toString():"";}
+    private void rememberFocus(){if(navigationRoot!=null&&renderedScreen>=0){String label=focusLabel(HostMotion.anchor(navigationRoot,getCurrentFocus()));if(!label.isEmpty())focusMemory.put(focusKey(renderedScreen,renderedSetupStep),label);}}
     private int renderedScreen=-1;
     private void build(){
-        View oldFocus=getCurrentFocus();final String focusedLabel=oldFocus instanceof TextView?((TextView)oldFocus).getText().toString():oldFocus!=null&&oldFocus.getContentDescription()!=null?oldFocus.getContentDescription().toString():"";
+        rememberFocus();View oldFocus=HostMotion.anchor(navigationRoot,getCurrentFocus());
+        final String focusedLabel=focusMemory.getOrDefault(focusKey(screen,step),focusLabel(oldFocus));
         final int previousScreen=renderedScreen;
         if(onboardingBackdrop!=null)onboardingBackdrop.setRunning(false);onboardingBackdrop=null;
 
         renderedPairVersion=Recovery.pairVersion;
         prefs.edit().putInt("setup_screen",screen).putInt("setup_step",step).apply();
-        overview=null;insights=null;ftpStatus=null;ftpButton=null;
+        overview=null;insights=null;updatesView=null;ftpStatus=null;ftpButton=null;
         colors();status=health=controlsStatus=recoveryStatus=nearbyStatus=notificationStatus=batteryStatus=null;portField=codeField=null;primary=backAction=nearbyAction=bluetoothAction=notificationAction=batteryAction=null;
         getWindow().setStatusBarColor(bg);getWindow().setNavigationBarColor(bg);getWindow().getDecorView().setSystemUiVisibility(dark?0:View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         ScrollView scroll=new ScrollView(this);scroll.setBackgroundColor(bg);scroll.setClipToPadding(false);
         FrameLayout frame=new FrameLayout(this);scroll.addView(frame,new ScrollView.LayoutParams(-1,-2));
-        page=new LinearLayout(this);page.setOrientation(LinearLayout.VERTICAL);page.setPadding(0,dp(20),0,dp(28));
-        FrameLayout.LayoutParams pp=new FrameLayout.LayoutParams(Math.max(dp(240),Math.min(getResources().getDisplayMetrics().widthPixels-dp(40),dp(620))),-2,Gravity.TOP|Gravity.CENTER_HORIZONTAL);frame.addView(page,pp);
+        page=new LinearLayout(this);page.setOrientation(LinearLayout.VERTICAL);page.setPadding(0,dp(screen==0?12:20),0,dp(28));
+        FrameLayout.LayoutParams pp=new FrameLayout.LayoutParams(Math.max(dp(240),Math.min(getResources().getDisplayMetrics().widthPixels-dp(40),dp(screen==0&&getResources().getConfiguration().screenWidthDp>=780&&getResources().getConfiguration().fontScale<=1.2f?860:620))),-2,Gravity.TOP|Gravity.CENTER_HORIZONTAL);frame.addView(page,pp);
         LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);
         View icon=new View(this){protected void onDraw(Canvas c){super.onDraw(c);Paint p=new Paint(3);p.setColor(accent);c.drawRoundRect(0,0,getWidth(),getHeight(),dp(12),dp(12),p);p.setColor(onAccent);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(dp(1.6f));c.drawRoundRect(dp(10),dp(8),dp(30),dp(21),dp(3),dp(3),p);c.drawRoundRect(dp(10),dp(24),dp(30),dp(32),dp(2),dp(2),p);}};
         header.addView(icon,new LinearLayout.LayoutParams(dp(40),dp(40)));TextView name=text("Thor Monitor",20,true);name.setPadding(dp(12),0,0,0);header.addView(name,new LinearLayout.LayoutParams(0,-2,1));
-        ImageButton theme=new ImageButton(this);theme.setImageResource(getResources().getIdentifier("ic_settings","drawable",getPackageName()));theme.setImageTintList(ColorStateList.valueOf(muted));theme.setPadding(dp(12),dp(12),dp(12),dp(12));HostMotion.style(theme,Color.TRANSPARENT,accent,border,14,false);theme.setContentDescription(screen==0?"Settings":"Appearance");theme.setOnClickListener(v->{if(screen==0){screen=3;build();}else appearance();});header.addView(theme,new LinearLayout.LayoutParams(dp(48),dp(48)));page.addView(header);if(HostTheme.current(this).rainbow){gap(page,14);page.addView(HostTheme.stripe(this));}gap(page,screen==1?20:26);
-        if(screen==3||screen==4||screen==5||screen==6||screen==7){ImageButton back=new ImageButton(this);back.setImageResource(getResources().getIdentifier("ic_back","drawable",getPackageName()));back.setImageTintList(ColorStateList.valueOf(ink));back.setBackgroundColor(Color.TRANSPARENT);back.setContentDescription(screen==5||screen==6||screen==7?"Back to Settings":"Back to Overview");back.setPadding(dp(12),dp(12),dp(12),dp(12));HostMotion.style(back,Color.TRANSPARENT,accent,border,14,false);back.setOnClickListener(v->{screen=screen==5||screen==6||screen==7?3:0;build();});LinearLayout.LayoutParams backSize=new LinearLayout.LayoutParams(dp(48),dp(48));backSize.rightMargin=dp(8);header.addView(back,0,backSize);}
+        ImageButton theme=new ImageButton(this);theme.setImageResource(getResources().getIdentifier("ic_settings","drawable",getPackageName()));theme.setImageTintList(ColorStateList.valueOf(muted));theme.setPadding(dp(12),dp(12),dp(12),dp(12));HostMotion.style(theme,Color.TRANSPARENT,accent,border,14,false);theme.setContentDescription(screen==0?"Settings":"Appearance");theme.setOnClickListener(v->{if(screen==0){screen=3;build();}else appearance();});header.addView(theme,new LinearLayout.LayoutParams(dp(48),dp(48)));page.addView(header);if(HostTheme.current(this).rainbow){gap(page,14);page.addView(HostTheme.stripe(this));}gap(page,screen==0?14:screen==1?20:26);
+        if(screen==3||screen==4||screen==5||screen==6||screen==7||screen==8){ImageButton back=new ImageButton(this);back.setImageResource(getResources().getIdentifier("ic_back","drawable",getPackageName()));back.setImageTintList(ColorStateList.valueOf(ink));back.setBackgroundColor(Color.TRANSPARENT);back.setContentDescription(screen==8&&updatesReturn==1?"Back to setup":screen==5||screen==6||screen==7||screen==8?"Back to Settings":"Back to Overview");back.setPadding(dp(12),dp(12),dp(12),dp(12));HostMotion.style(back,Color.TRANSPARENT,accent,border,14,false);back.setOnClickListener(v->{screen=screen==8?updatesReturn:screen==5||screen==6||screen==7?3:0;build();});LinearLayout.LayoutParams backSize=new LinearLayout.LayoutParams(dp(48),dp(48));backSize.rightMargin=dp(8);header.addView(back,0,backSize);}
 
-        if(screen==1)setup();else if(screen==2)recovery();else if(screen==3)hostSettings();else if(screen==5)powerSettings();else if(screen==6)aboutPage();else if(screen==7)creditsPage();else if(screen==4){insights=new HostBatteryInsightsView(this);page.addView(insights);}else home();
+        if(screen==1)setup();else if(screen==2)recovery();else if(screen==3)hostSettings();else if(screen==5)powerSettings();else if(screen==6)aboutPage();else if(screen==7)creditsPage();else if(screen==8){updatesView=new HostUpdatesView(this);page.addView(updatesView);}else if(screen==4){insights=new HostBatteryInsightsView(this);page.addView(insights);}else home();
         if(screen==1 && primary!=null) {
             page.removeView(primary);if(backAction!=null)page.removeView(backAction);
             FrameLayout root=new FrameLayout(this);root.setBackgroundColor(bg);
@@ -153,10 +172,12 @@ public class MainActivity extends Activity {
             root.addView(footer,new FrameLayout.LayoutParams(pp.width,-2,Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL));showPage(root);
         } else showPage(scroll);
         renderedScreen=screen;
+        final View focusRoot=navigationRoot;
         page.post(()->{
+            if(navigationRoot!=focusRoot||!focusRoot.isAttachedToWindow())return;
             ArrayList<View> targets=new ArrayList<>();navigationRoot.addFocusables(targets,View.FOCUS_FORWARD);
-            for(View target:targets){String label=target instanceof TextView?((TextView)target).getText().toString():String.valueOf(target.getContentDescription());if(!focusedLabel.isEmpty()&&focusedLabel.equals(label)){target.requestFocusFromTouch();return;}}
-            if(primary!=null&&primary.isEnabled())primary.requestFocusFromTouch();else if(!targets.isEmpty())targets.get(0).requestFocusFromTouch();
+            for(View target:targets){String label=focusLabel(target);if(!focusedLabel.isEmpty()&&focusedLabel.equals(label)){HostMotion.restoreFocus(target);return;}}
+            if(primary!=null&&primary.isEnabled())HostMotion.restoreFocus(primary);else if(!targets.isEmpty())HostMotion.restoreFocus(targets.get(0));
         });
         renderedSetupStep=screen==1?step:-1;
         if(screen!=2)Recovery.stopPairingDiscovery(this);
@@ -166,9 +187,11 @@ public class MainActivity extends Activity {
         HostMotion.defaults(dialog.getWindow().getDecorView());HostMotion.navigation(dialog.getWindow().getDecorView());
         dialog.setOnKeyListener((d,code,event)->{
             int direction=code==KeyEvent.KEYCODE_DPAD_DOWN?View.FOCUS_DOWN:code==KeyEvent.KEYCODE_DPAD_UP?View.FOCUS_UP:code==KeyEvent.KEYCODE_DPAD_LEFT?View.FOCUS_LEFT:code==KeyEvent.KEYCODE_DPAD_RIGHT?View.FOCUS_RIGHT:0;
-            View focused=dialog.getCurrentFocus();
+            if(direction!=0||code==KeyEvent.KEYCODE_BUTTON_A||code==KeyEvent.KEYCODE_DPAD_CENTER||code==KeyEvent.KEYCODE_BUTTON_B)HostMotion.controllerInput();
+            if(direction==0&&code!=KeyEvent.KEYCODE_BUTTON_A&&code!=KeyEvent.KEYCODE_DPAD_CENTER&&code!=KeyEvent.KEYCODE_BUTTON_B)return false;
+            View focused=HostMotion.controllerAnchor(dialog.getWindow().getDecorView(),dialog.getCurrentFocus());
             if(direction!=0){if(event.getAction()==KeyEvent.ACTION_DOWN){View next=focused==null?null:focused.focusSearch(direction);if(next==null&&focused==null){ArrayList<View> targets=new ArrayList<>();dialog.getWindow().getDecorView().addFocusables(targets,View.FOCUS_FORWARD,View.FOCUSABLES_ALL);if(!targets.isEmpty())next=targets.get(0);}if(next!=null)HostMotion.focus(next);}return true;}
-            if(code==KeyEvent.KEYCODE_BUTTON_A||code==KeyEvent.KEYCODE_DPAD_CENTER){if(focused!=null){focused.setPressed(event.getAction()==KeyEvent.ACTION_DOWN);if(event.getAction()==KeyEvent.ACTION_UP)focused.performClick();}return true;}
+            if(code==KeyEvent.KEYCODE_BUTTON_A||code==KeyEvent.KEYCODE_DPAD_CENTER){if(focused!=null){if(event.getAction()==KeyEvent.ACTION_DOWN)HostMotion.focus(focused);focused.setPressed(event.getAction()==KeyEvent.ACTION_DOWN);if(event.getAction()==KeyEvent.ACTION_UP)focused.performClick();}return true;}
             if(code==KeyEvent.KEYCODE_BUTTON_B){if(event.getAction()==KeyEvent.ACTION_UP)dialog.dismiss();return true;}return false;
         });
     }
@@ -181,10 +204,11 @@ public class MainActivity extends Activity {
         if(previous.getParent() instanceof ViewGroup)((ViewGroup)previous.getParent()).removeView(previous);
         previous.animate().cancel();if(previous instanceof ViewGroup)((ViewGroup)previous).setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);previous.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         FrameLayout scene=new FrameLayout(this);scene.setBackgroundColor(bg);scene.addView(previous,new FrameLayout.LayoutParams(-1,-1));scene.addView(next,new FrameLayout.LayoutParams(-1,-1));setContentView(scene);
-        boolean back=screen==0||(renderedScreen==screen&&screen==1&&step<renderedSetupStep)||(renderedScreen>screen&&screen!=3);
-        float travel=dp(back?-22:22);
-        next.setAlpha(0);next.setTranslationX(travel);next.setScaleX(.992f);next.setScaleY(.992f);
-        next.animate().alpha(1).translationX(0).scaleX(1).scaleY(1).setDuration(320).setInterpolator(HostMotion.EASE).withLayer().start();
+        boolean navigating=screen!=renderedScreen||(screen==1&&step!=renderedSetupStep);
+        boolean back=screen==0||(renderedScreen==screen&&screen==1&&step<renderedSetupStep)||(screen==3&&(renderedScreen==5||renderedScreen==6||renderedScreen==7||renderedScreen==8))||(screen==1&&(renderedScreen==2||renderedScreen==8));
+        float travel=navigating?dp(back?-22:22):0;
+        next.setAlpha(0);next.setTranslationX(travel);next.setScaleX(navigating?.992f:1);next.setScaleY(navigating?.992f:1);
+        next.animate().alpha(1).translationX(0).scaleX(1).scaleY(1).setDuration(navigating?320:180).setInterpolator(HostMotion.EASE).withLayer().start();
         previous.animate().alpha(0).translationX(-travel*.5f).setDuration(200).setInterpolator(HostMotion.EASE).withLayer().withEndAction(()->scene.removeView(previous)).start();
     }
     private void home(){
@@ -192,12 +216,15 @@ public class MainActivity extends Activity {
     }
     private void hostSettings(){
         page.addView(text("Settings",28,true));gap(page,16);
-        LinearLayout live=box(null);status=text("Checking connection…",22,true);live.addView(status);gap(live,6);health=body(live,"");controlsStatus=body(live,"");health.setVisibility(View.GONE);controlsStatus.setVisibility(View.GONE);
-        primary=button(live,MonitorService.running?"Stop monitoring":"Start monitoring",true,()->{if(MonitorService.running){prefs.edit().putBoolean("monitor_wanted",false).apply();stopService(new Intent(this,MonitorService.class));handler.postDelayed(this::build,250);}else startMonitoring(false);});
+        LinearLayout live=box(null),serviceRow=new LinearLayout(this);serviceRow.setGravity(Gravity.CENTER_VERTICAL);live.addView(serviceRow,new LinearLayout.LayoutParams(-1,-2));
+        LinearLayout serviceText=new LinearLayout(this);serviceText.setOrientation(LinearLayout.VERTICAL);status=text("Checking connection…",18,true);serviceText.addView(status);controlsStatus=text("",14,false);controlsStatus.setTextColor(muted);controlsStatus.setPadding(0,dp(6),0,0);serviceText.addView(controlsStatus);serviceRow.addView(serviceText,new LinearLayout.LayoutParams(0,-2,1));
+        primary=button(serviceRow,MonitorService.running?"Stop monitoring":"Start monitoring",!MonitorService.running,()->{if(MonitorService.running){prefs.edit().putBoolean("monitor_wanted",false).apply();stopService(new Intent(this,MonitorService.class));handler.postDelayed(this::build,250);}else startMonitoring(false);});
+        LinearLayout.LayoutParams serviceAction=new LinearLayout.LayoutParams(dp(180),-2);serviceAction.leftMargin=dp(16);primary.setLayoutParams(serviceAction);primary.setPadding(dp(12),dp(10),dp(12),dp(10));
+        health=null;controlsStatus.setVisibility(View.GONE);
         LinearLayout look=disclosure("Appearance","palette","Theme, color and app icon");button(look,"Theme",false,this::appearance);button(look,"Thor color & icon",false,this::colorPicker);
-        LinearLayout background=disclosure("Monitoring","moon","Battery saving and automatic restart");button(background,"Battery saving",false,()->{screen=5;build();});
+        LinearLayout background=disclosure("Monitoring","moon","Battery saving and automatic restart");body(background,"Use Home or Back to leave monitoring running. Stop monitoring ends the service.");button(background,"Battery saving",false,()->{screen=5;build();});
         toggle(background,"Start after restart","Resume after the Thor is unlocked.","start_on_boot",true);
-        toggle(background,"Recover if interrupted","Keep monitoring available after app dismissal.","recover_dismissal",true);
+        toggle(background,"Recover if interrupted","Restore monitoring if Android interrupts it.","recover_dismissal",true);if(HostBackgroundProtection.supported()){toggle(background,"Protect from Recents cleanup","Keep the service connected when dismissing the app.","protect_recents",true);if(prefs.getBoolean("protect_recents",true)){body(background,HostBackgroundProtection.status(this));if(!HostBackgroundProtection.active(this))button(background,"Allow background protection",false,this::allowBackgroundProtection);}}
         LinearLayout locator=disclosure("Find my Thor","locator","Stop sound panel");
         toggle(locator,"Stop panel over apps","Show a Stop button over games and other apps.","finder_overlay",true);
         body(locator,LocatorStopPanel.allowed(this)?"Overlay permission allowed":"Overlay permission needed");
@@ -219,12 +246,17 @@ public class MainActivity extends Activity {
         LinearLayout restore=disclosure("Controls recovery","shield","Restore controls after a restart");recoveryStatus=body(restore,recoveryLabel());button(restore,"Recovery setup",false,()->openRecovery(false));
         LinearLayout keyboard=disclosure("Phone keyboard","keyboard","Type on the Thor from your phone");body(keyboard,"Enable Thor Remote Keyboard, then select it. Your usual keyboard remains available.");
         button(keyboard,"Enable keyboard",false,()->startActivity(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)));button(keyboard,"Select keyboard",false,()->getSystemService(android.view.inputmethod.InputMethodManager.class).showInputMethodPicker());
-        button(page,"Review setup",false,()->{screen=1;step=0;build();});
-        button(page,"Repair phone connection",false,this::repairPhone);
-        Button forget=button(page,"Forget saved phone",false,()->{FileAccess.revoke(this);prefs.edit().remove("owner").putBoolean("monitor_wanted",false).apply();stopService(new Intent(this,MonitorService.class));Toast.makeText(this,"Phone forgotten. System Bluetooth pairing is unchanged.",Toast.LENGTH_LONG).show();handler.postDelayed(this::build,250);});forget.setTextColor(dark?0xFFFFA7A7:0xFFAD3030);
-        gap(page,16);button(page,"About",false,()->{screen=6;build();});
-        button(page,"Sound credits",false,this::soundCredits);gap(page,8);
+        LinearLayout device=navigationGroup("Device");
+        navigationRow(device,"Review setup","Permissions and optional features","shield",false,()->{screen=1;step=0;build();});
+        navigationRow(device,"Repair phone connection","Restore your phone’s access","bluetooth",false,this::repairPhone);
+        navigationRow(device,"Forget saved phone","Reset this app’s phone pairing","phone",true,()->{FileAccess.revoke(this);prefs.edit().remove("owner").putBoolean("monitor_wanted",false).apply();stopService(new Intent(this,MonitorService.class));Toast.makeText(this,"Phone forgotten. System Bluetooth pairing is unchanged.",Toast.LENGTH_LONG).show();handler.postDelayed(this::build,250);});
+        LinearLayout app=navigationGroup("App");
+        navigationRow(app,"Updates","GitHub releases and Obtainium","update",false,this::openUpdates);
+        navigationRow(app,"About","Allie Stark · @Allie9Lives","info",false,()->{screen=6;build();});
+        navigationRow(app,"Sound credits","Tranquility by Helton Yan","options",false,this::soundCredits);gap(page,8);
     }
+
+    private void openUpdates(){updatesReturn=screen==1?1:3;screen=8;build();}
     private void aboutPage(){
         page.addView(text("About",28,true));gap(page,20);LinearLayout about=box(null);String version="";try{version=getPackageManager().getPackageInfo(getPackageName(),0).versionName;}catch(Exception ignored){}body(about,"Thor Monitor "+version);LinearLayout author=new LinearLayout(this);author.setGravity(Gravity.CENTER_VERTICAL);author.setPadding(0,dp(12),0,0);ImageView avatar=new ImageView(this);avatar.setImageResource(getResources().getIdentifier("author_avatar","drawable",getPackageName()));avatar.setScaleType(ImageView.ScaleType.CENTER_CROP);android.graphics.drawable.GradientDrawable circle=new android.graphics.drawable.GradientDrawable();circle.setShape(android.graphics.drawable.GradientDrawable.OVAL);circle.setColor(card);avatar.setBackground(circle);avatar.setClipToOutline(true);author.addView(avatar,new LinearLayout.LayoutParams(dp(56),dp(56)));LinearLayout identity=new LinearLayout(this);identity.setOrientation(LinearLayout.VERTICAL);identity.setPadding(dp(14),0,0,0);identity.addView(text("Allie Stark",18,true));TextView handle=text("@Allie9Lives",14,false);handle.setTextColor(muted);identity.addView(handle);author.addView(identity,new LinearLayout.LayoutParams(0,-2,1));about.addView(author);body(about,"© 2026 Allie Stark (Allie9Lives)");button(about,"GitHub · Allie9Lives",false,()->{try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/Allie9Lives")));}catch(Exception e){Toast.makeText(this,"Couldn’t open GitHub",Toast.LENGTH_SHORT).show();}});
     }
@@ -245,6 +277,7 @@ public class MainActivity extends Activity {
             }).show();
         }).setNegativeButton("Cancel",null).show();
     }
+    private void allowBackgroundProtection(){Recovery.enable(this,true);openRecovery(screen==1);}
     private void saveRest(){MonitorService.restChanged();build();}
     private void restTime(String key,int initial){new TimePickerDialog(this,(v,h,m)->{int minute=h*60+m;String other=key.equals("rest_start")?"rest_end":"rest_start";if(minute==prefs.getInt(other,other.equals("rest_end")?360:1260)){Toast.makeText(this,"Start and restore times must differ",Toast.LENGTH_LONG).show();return;}prefs.edit().putInt(key,minute).apply();saveRest();},initial/60,initial%60,android.text.format.DateFormat.is24HourFormat(this)).show();}
     private String restDuration(int minutes){return minutes<60?minutes+(minutes==1?" minute":" minutes"):minutes%60==0?minutes/60+(minutes==60?" hour":" hours"):minutes/60+" h "+minutes%60+" min";}
@@ -290,7 +323,7 @@ public class MainActivity extends Activity {
         }else if(step==2){
             LinearLayout n=box("Notifications");body(n,"Monitoring status and Find my Thor alerts.");notificationStatus=body(n,"");notificationAction=button(n,"Allow notifications",false,this::requestNotifications);
             LinearLayout battery=box("Background access");body(battery,"Allow unrestricted battery use for reliable monitoring.");batteryStatus=body(battery,"");batteryAction=button(battery,"Battery permission",false,()->{try{startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,Uri.parse("package:"+getPackageName())));}catch(Exception e){startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));}});
-            LinearLayout options=disclosure("Automatic restart","moon","Resume after restart or interruption");toggle(options,"Start after restart","Resume after the Thor is unlocked.","start_on_boot",true);toggle(options,"Recover if interrupted","Manual Stop always keeps monitoring off.","recover_dismissal",true);
+            LinearLayout options=disclosure("Automatic restart","moon","Resume after restart or interruption");toggle(options,"Start after restart","Resume after the Thor is unlocked.","start_on_boot",true);toggle(options,"Recover if interrupted","Manual Stop always keeps monitoring off.","recover_dismissal",true);if(HostBackgroundProtection.supported()){toggle(options,"Protect from Recents cleanup","Keep monitoring connected when dismissing the app.","protect_recents",true);if(prefs.getBoolean("protect_recents",true)){body(options,HostBackgroundProtection.status(this));if(!HostBackgroundProtection.active(this))button(options,"Allow background protection",false,this::allowBackgroundProtection);}}
         }else if(step==3){
             LinearLayout b=box("Controls recovery");body(b,"Pair once on trusted Wi-Fi. Controls restore automatically after a restart.");gap(b,10);recoveryStatus=body(b,recoveryLabel());button(b,"Set up controls",true,()->openRecovery(true));gap(b,10);body(b,"Optional. Bluetooth monitoring works without this step.");
         }else if(step==4){
@@ -300,6 +333,7 @@ public class MainActivity extends Activity {
             button(files,"Choose internal folder",false,()->chooseFolder(51));button(files,"Choose microSD folder",false,()->chooseFolder(52));
             LinearLayout locator=disclosure("Find my Thor","locator","Show a Stop button over other apps");body(locator,"Allow the overlay to stop locator sounds from any app.");button(locator,"Overlay permission",false,()->startActivityForResult(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName())),54));
             LinearLayout keyboard=disclosure("Phone keyboard","keyboard","Type from your phone");body(keyboard,"Enable Thor Remote Keyboard, then select it.");button(keyboard,"Enable keyboard",false,()->startActivity(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)));button(keyboard,"Select keyboard",false,()->getSystemService(android.view.inputmethod.InputMethodManager.class).showInputMethodPicker());
+            LinearLayout updater=disclosure("Updates","options","GitHub releases and Obtainium");body(updater,"Use the built-in checker or add Thor Monitor to Obtainium.");button(updater,"Check for updates",false,()->{openUpdates();HostUpdates.check(this,true);});button(updater,"Add to Obtainium",false,()->HostUpdates.obtainium(this));
             LinearLayout saving=disclosure("Battery saving","moon","Set up overnight pauses after connecting");body(saving,"In Settings → Battery saving, add trusted Wi-Fi for overnight pauses. Default: three hours with screens off, 9 PM–6 AM. Monitoring stays awake until you add a trusted network.");
         }else{
             LinearLayout b=box("On your phone");setupInstruction(b,"1","Open Thor Companion.");setupInstruction(b,"2","Find your Thor and tap Connect.");setupInstruction(b,"3","Confirm pairing on both devices.");gap(b,10);body(b,"Keep the Thor open for the first connection.");
@@ -343,10 +377,23 @@ public class MainActivity extends Activity {
 
     private int dialogTheme(){return dark?android.R.style.Theme_DeviceDefault_Dialog_Alert:android.R.style.Theme_DeviceDefault_Light_Dialog_Alert;}
     private void appearance(){
-        String[] names={"System default","Light","Dark","Clear Purple","Rainbow"},values={"system","light","dark","clearPurple","rainbow"};
-        Dialog dialog=new Dialog(this);LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(22),dp(22),dp(22),dp(16));content.setBackground(shape(card,22,true));content.addView(text("Appearance",22,true));gap(content,6);
-        for(int i=0;i<values.length;i++){final int choice=i;boolean selected=values[i].equals(prefs.getString("appearance","system"));button(content,(selected?"✓  ":"")+names[i],selected,()->{prefs.edit().putString("appearance",values[choice]).apply();dialog.dismiss();build();LocatorStopPanel.refresh(this);});}
-        button(content,"Thor color & icon",false,()->{dialog.dismiss();colorPicker();});button(content,"Cancel",false,dialog::dismiss);ScrollView choices=new ScrollView(this);choices.addView(content);dialog.setContentView(choices);dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);dialog.show();controllerDialog(dialog);dialog.getWindow().setLayout(Math.min(dp(400),getResources().getDisplayMetrics().widthPixels-dp(40)),-2);
+        String[] names={"Use system theme","Light","Dark","Clear Purple","Rainbow"},values={"system","light","dark","clearPurple","rainbow"};
+        Dialog dialog=new Dialog(this);dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(16),dp(10),dp(16),dp(16));content.setBackground(shape(card,22,true));
+        LinearLayout heading=new LinearLayout(this);heading.setGravity(Gravity.CENTER_VERTICAL);heading.addView(text("Theme",22,true),new LinearLayout.LayoutParams(0,-2,1));
+        ImageButton close=new ImageButton(this);close.setImageResource(android.R.drawable.ic_menu_close_clear_cancel);close.setImageTintList(ColorStateList.valueOf(muted));close.setPadding(dp(12),dp(12),dp(12),dp(12));close.setContentDescription("Close themes");HostMotion.style(close,Color.TRANSPARENT,accent,border,14,false);close.setOnClickListener(v->dialog.dismiss());heading.addView(close,new LinearLayout.LayoutParams(dp(48),dp(48)));content.addView(heading);
+        String current=prefs.getString("appearance","system");
+        for(int rowIndex=0;rowIndex<3;rowIndex++){
+            LinearLayout row=new LinearLayout(this);content.addView(row,new LinearLayout.LayoutParams(-1,-2));
+            int first=rowIndex==0?0:rowIndex*2-1,columns=rowIndex==0?1:2;
+            for(int col=0;col<columns;col++){
+                final int choice=first+col;boolean selected=values[choice].equals(current);
+                Button option=button(row,(selected?"✓  ":"")+names[choice],selected,()->{prefs.edit().putString("appearance",values[choice]).apply();dialog.dismiss();build();LocatorStopPanel.refresh(this);});
+                option.setContentDescription(names[choice]+(selected?", selected":""));option.setMinimumHeight(dp(52));option.setPadding(dp(10),dp(8),dp(10),dp(8));
+                LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);lp.topMargin=dp(8);if(columns==2){if(col==0)lp.rightMargin=dp(4);else lp.leftMargin=dp(4);}option.setLayoutParams(lp);
+            }
+        }
+        dialog.setContentView(content);dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);dialog.show();controllerDialog(dialog);dialog.getWindow().setLayout(Math.min(dp(420),getResources().getDisplayMetrics().widthPixels-dp(32)),-2);
     }
     private void colorButtons(LinearLayout parent,Dialog dialog){
         String selected=prefs.getString("thor_color","");
@@ -381,6 +428,7 @@ public class MainActivity extends Activity {
     }
     @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] results){super.onRequestPermissionsResult(request,permissions,results);update();}
     private void update(){
+        if(updatesView!=null)updatesView.refresh();
         if(screen==2&&Recovery.paired(this)&&Recovery.pairVersion!=renderedPairVersion){repairing=false;build();return;}
         if((screen==0||screen==3)&&primary!=null)primary.setText(MonitorService.running?"Stop monitoring":"Start monitoring");
         if(nearbyAction!=null){nearbyAction.setVisibility(nearby()?View.GONE:View.VISIBLE);nearbyAction.setEnabled(!nearby());nearbyAction.setAlpha(nearby()?0.45f:1);nearbyAction.setText(nearby()?"Bluetooth allowed":"Allow nearby devices");}
@@ -409,20 +457,25 @@ public class MainActivity extends Activity {
 
     private void chooseFolder(int request){Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION|Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION|Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);startActivityForResult(i,request);}
     @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==53||request==54){build();return;}if((request==51||request==52)&&result==RESULT_OK&&data!=null&&data.getData()!=null){try{FileAccess.choose(this,request==51?"internal":"sd",data.getData(),data.getFlags());build();}catch(Exception e){Toast.makeText(this,"Folder access was not granted",Toast.LENGTH_LONG).show();}}}
-    @Override public void onResume(){super.onResume();if(onboardingBackdrop!=null)onboardingBackdrop.setRunning(true);handler.removeCallbacks(refresh);handler.post(refresh);}
+    @Override public void onResume(){super.onResume();HostBackgroundProtection.apply(this);HostUpdates.check(this,false);if(onboardingBackdrop!=null)onboardingBackdrop.setRunning(true);handler.removeCallbacks(refresh);handler.post(refresh);}
     @Override public void onPause(){stickNavigation.reset();if(onboardingBackdrop!=null)onboardingBackdrop.setRunning(false);handler.removeCallbacks(refresh);super.onPause();}
     @Override public void onDestroy(){handler.removeCallbacksAndMessages(null);reader.shutdownNow();Recovery.stopPairingDiscovery(this);super.onDestroy();}
+    @Override public boolean dispatchTouchEvent(MotionEvent event){
+        if(event.getActionMasked()==MotionEvent.ACTION_DOWN)HostMotion.touch(navigationRoot!=null?navigationRoot:getWindow().getDecorView());
+        return super.dispatchTouchEvent(event);
+    }
     @Override public boolean dispatchKeyEvent(KeyEvent event){
         int code=event.getKeyCode();int direction=code==KeyEvent.KEYCODE_DPAD_DOWN?View.FOCUS_DOWN:code==KeyEvent.KEYCODE_DPAD_UP?View.FOCUS_UP:code==KeyEvent.KEYCODE_DPAD_LEFT?View.FOCUS_LEFT:code==KeyEvent.KEYCODE_DPAD_RIGHT?View.FOCUS_RIGHT:code==KeyEvent.KEYCODE_BUTTON_R1?View.FOCUS_FORWARD:code==KeyEvent.KEYCODE_BUTTON_L1?View.FOCUS_BACKWARD:0;
+        if(direction!=0||code==KeyEvent.KEYCODE_BUTTON_A||code==KeyEvent.KEYCODE_DPAD_CENTER||code==KeyEvent.KEYCODE_BUTTON_B)HostMotion.controllerInput();
         if(direction!=0){if(event.getAction()==KeyEvent.ACTION_DOWN)moveFocus(direction);return true;}
-        if(code==KeyEvent.KEYCODE_BUTTON_A||code==KeyEvent.KEYCODE_DPAD_CENTER){View focused=getCurrentFocus();if(focused==null){moveFocus(View.FOCUS_FORWARD);focused=getCurrentFocus();}if(focused!=null&&focused.isEnabled()){focused.setPressed(event.getAction()==KeyEvent.ACTION_DOWN);if(event.getAction()==KeyEvent.ACTION_UP&&!event.isCanceled())focused.performClick();}return true;}
+        if(code==KeyEvent.KEYCODE_BUTTON_A||code==KeyEvent.KEYCODE_DPAD_CENTER){View focused=HostMotion.controllerAnchor(navigationRoot,getCurrentFocus());if(focused==null){moveFocus(View.FOCUS_FORWARD);focused=getCurrentFocus();}if(focused!=null&&focused.isEnabled()){if(event.getAction()==KeyEvent.ACTION_DOWN)HostMotion.focus(focused);focused.setPressed(event.getAction()==KeyEvent.ACTION_DOWN);if(event.getAction()==KeyEvent.ACTION_UP&&!event.isCanceled())focused.performClick();}return true;}
         if(code==KeyEvent.KEYCODE_BUTTON_B){if(event.getAction()==KeyEvent.ACTION_UP)onBackPressed();return true;}
         return super.dispatchKeyEvent(event);
     }
     private long lastStickMove;private int stickDirection;
     private final StickNavigation stickNavigation=new StickNavigation();
     private void moveFocus(int direction){
-        View focused=getCurrentFocus();if(focused instanceof HostBatteryInsightsView.HistoryChart&&(direction==View.FOCUS_LEFT||direction==View.FOCUS_RIGHT)){((HostBatteryInsightsView.HistoryChart)focused).step(direction==View.FOCUS_RIGHT?1:-1);return;}View next=focused==null?null:focused.focusSearch(direction);
+        View focused=HostMotion.controllerAnchor(navigationRoot,getCurrentFocus());if(focused instanceof HostBatteryInsightsView.HistoryChart&&(direction==View.FOCUS_LEFT||direction==View.FOCUS_RIGHT)){((HostBatteryInsightsView.HistoryChart)focused).step(direction==View.FOCUS_RIGHT?1:-1);return;}View next=screen==8&&updatesView!=null&&(direction==View.FOCUS_UP||direction==View.FOCUS_DOWN)?updatesView.nextControl(navigationRoot,focused,direction):focused==null?null:focused.focusSearch(direction);
         if(next==null&&focused==null){ArrayList<View> targets=new ArrayList<>();if(navigationRoot!=null)navigationRoot.addFocusables(targets,View.FOCUS_FORWARD,View.FOCUSABLES_ALL);for(View candidate:targets){if(candidate.isEnabled()&&candidate.getVisibility()==View.VISIBLE){next=candidate;break;}}}
         if(next!=null)HostMotion.focus(next);
         else if(direction==View.FOCUS_DOWN||direction==View.FOCUS_UP){View parent=focused;while(parent!=null&&!(parent instanceof ScrollView))parent=parent.getParent() instanceof View?(View)parent.getParent():null;if(parent instanceof ScrollView)((ScrollView)parent).smoothScrollBy(0,direction==View.FOCUS_DOWN?dp(180):-dp(180));}
@@ -442,5 +495,5 @@ public class MainActivity extends Activity {
         }
         return super.onGenericMotionEvent(event);
     }
-    @Override public void onBackPressed(){if(screen==5||screen==6||screen==7){screen=3;build();}else if(screen==3||screen==4||screen==5){screen=0;build();}else if(screen==2){leaveRecovery();}else if(screen==1&&step>0){step--;build();}else super.onBackPressed();}
+    @Override public void onBackPressed(){if(screen==8){screen=updatesReturn;build();}else if(screen==5||screen==6||screen==7){screen=3;build();}else if(screen==3||screen==4||screen==5){screen=0;build();}else if(screen==2){leaveRecovery();}else if(screen==1&&step>0){step--;build();}else super.onBackPressed();}
 }
