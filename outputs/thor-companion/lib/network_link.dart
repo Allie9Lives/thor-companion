@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'companion_controller.dart';
 import 'file_transfer.dart';
 import 'ui.dart';
+import 'network_endpoint.dart';
 
 class NetworkLink extends ChangeNotifier {
   NetworkLink(this.controller);
@@ -43,7 +43,12 @@ class NetworkLink extends ChangeNotifier {
     try {
       final j = await controller.pairFiles();
       if (_disposed) return;
-      connection = FileConnection.fromMap(j);
+      final next = FileConnection.fromMap(j);
+      connection = next
+          .withManualHost(
+            connection?.pin == next.pin ? connection?.manualHost : null,
+          )
+          .retainingAddresses(connection);
       host = connection!.defaultHost;
       await fileBridge.invokeMethod('saveConnection', connection!.toMap());
       await controller.adaptive?.configure(connection!);
@@ -70,37 +75,48 @@ class NetworkLink extends ChangeNotifier {
           'Link network access over Bluetooth once, then connect over Wi-Fi.',
         );
       }
-      transport?.close();
-      transport = ThorFiles(connection!, host);
-      final watch = Stopwatch()..start();
-      final j = await transport!
-          .get('status')
-          .timeout(const Duration(seconds: 15));
-      watch.stop();
-      if (_disposed) return;
-      if (j['version'] is! String || j['monitoring'] is! bool) {
-        throw StateError(
-          'Update Thor Monitor to use network health and Wi-Fi screenshots.',
-        );
+      final saved = await fileBridge.invokeMapMethod<String, dynamic>(
+        'loadConnection',
+      );
+      if (saved != null) {
+        final latest = FileConnection.fromMap(saved);
+        if (latest.pin == connection!.pin) connection = latest;
       }
-      status = j;
-      checkTime = watch.elapsed;
+      final result = await connectFilesAutomatically(
+        connection!,
+        cancelled: () => _disposed,
+      );
+      if (_disposed) {
+        result.value.client.close();
+        return;
+      }
+      transport?.close();
+      transport = result.value.client;
+      host = result.host;
+      status = result.value.status;
+      checkTime = result.elapsed;
       checkedAt = DateTime.now();
-      connection = connection!.usingHost(host.trim());
-      await fileBridge.invokeMethod('saveConnection', connection!.toMap());
       await controller.adaptive?.configure(connection!);
     } catch (e) {
-      transport?.close();
-      transport = null;
       error = e is StateError
           ? e.message
-          : e is HandshakeException
-          ? 'The Thor identity could not be verified. Link network access again over Bluetooth.'
-          : 'Could not reach the Thor. Check Wi-Fi, its address, and any existing VPN connection.';
+          : 'Could not reach the Thor over Wi-Fi or VPN.';
     } finally {
       busy = false;
       changed();
     }
+  }
+
+  Future<void> setManualHost(String value) async {
+    final address = value.trim();
+    if (connection == null) return;
+    if (address.isNotEmpty && !FileConnection.validHost(address)) {
+      throw StateError('Enter an IP address or hostname.');
+    }
+    connection = connection!.withManualHost(address.isEmpty ? null : address);
+    await fileBridge.invokeMethod('saveConnection', connection!.toMap());
+    await controller.adaptive?.configure(connection!);
+    changed();
   }
 
   void cancel() {
@@ -123,9 +139,10 @@ class NetworkConnectionCard extends StatefulWidget {
     super.key,
     required this.link,
     this.disabled = false,
+    this.showAdvanced = false,
   });
   final NetworkLink link;
-  final bool disabled;
+  final bool disabled, showAdvanced;
   @override
   State<NetworkConnectionCard> createState() => _NetworkConnectionCardState();
 }
@@ -136,13 +153,14 @@ class _NetworkConnectionCardState extends State<NetworkConnectionCard> {
   @override
   void initState() {
     super.initState();
-    address.text = widget.link.host;
+    address.text = widget.link.connection?.manualHost ?? '';
     widget.link.addListener(sync);
   }
 
   void sync() {
-    if (!focus.hasFocus && address.text != widget.link.host) {
-      address.text = widget.link.host;
+    final manual = widget.link.connection?.manualHost ?? '';
+    if (!focus.hasFocus && address.text != manual) {
+      address.text = manual;
     }
     if (mounted) setState(() {});
   }
@@ -163,15 +181,13 @@ class _NetworkConnectionCardState extends State<NetworkConnectionCard> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const Text(
-            'Wi-Fi connection',
+            'Network connection',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           Text(n.connection?.name ?? 'Link this phone to your Thor'),
           const SizedBox(height: 8),
-          const Text(
-            'Uses the Thor’s Wi-Fi address or an existing VPN route. Link once over Bluetooth; images and network checks use the encrypted network connection.',
-          ),
+          const Text('Automatically uses a reachable VPN or local address.'),
           const SizedBox(height: 12),
           OutlinedButton(
             onPressed:
@@ -192,43 +208,71 @@ class _NetworkConnectionCardState extends State<NetworkConnectionCard> {
           ),
           if (n.connection != null) ...[
             const SizedBox(height: 12),
-            TextField(
-              controller: address,
-              focusNode: focus,
-              enabled: !n.busy && !widget.disabled,
-              onChanged: (v) => n.host = v,
-              decoration: const InputDecoration(
-                labelText: 'Thor IP address or hostname',
-              ),
-            ),
-            if (n.connection!.hosts.length > 1)
-              Wrap(
-                spacing: 8,
-                children: n.connection!.hosts
-                    .map(
-                      (h) => ActionChip(
-                        label: Text(h),
-                        onPressed: n.busy || widget.disabled
+            if (widget.showAdvanced)
+              ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                title: const Text('Address override'),
+                subtitle: const Text('Automatic by default'),
+                children: [
+                  TextField(
+                    controller: address,
+                    focusNode: focus,
+                    enabled: !n.busy && !widget.disabled,
+                    decoration: const InputDecoration(
+                      labelText: 'IP address or hostname',
+                      hintText: 'Automatic',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      TextButton(
+                        onPressed: n.busy
                             ? null
-                            : () {
-                                address.text = h;
-                                n.host = h;
+                            : () async {
+                                try {
+                                  await n.setManualHost(address.text);
+                                  focus.unfocus();
+                                  await n.check();
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          '$e'.replaceFirst('Bad state: ', ''),
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                }
                               },
+                        child: const Text('Apply'),
                       ),
-                    )
-                    .toList(),
+                      TextButton(
+                        onPressed: n.busy
+                            ? null
+                            : () async {
+                                await n.setManualHost('');
+                                address.clear();
+                                focus.unfocus();
+                                await n.check();
+                              },
+                        child: const Text('Use automatic'),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             const SizedBox(height: 12),
             FilledButton.icon(
               onPressed: n.busy || widget.disabled
                   ? null
                   : () {
-                      n.host = address.text;
                       focus.unfocus();
                       n.check();
                     },
               icon: const Icon(Icons.wifi),
-              label: Text(n.busy ? 'Checking…' : 'Check Wi-Fi connection'),
+              label: Text(n.busy ? 'Checking…' : 'Check connection'),
             ),
           ],
           if (n.busy) ...[
@@ -238,7 +282,7 @@ class _NetworkConnectionCardState extends State<NetworkConnectionCard> {
           if (n.ready) ...[
             const SizedBox(height: 12),
             Text(
-              'Network reachable · ${n.checkTime!.inMilliseconds} ms check · ${TimeOfDay.fromDateTime(n.checkedAt!).format(context)}',
+              '${isVpnAddress(n.host) ? 'VPN' : 'Local network'} · ${n.host} · ${n.checkTime!.inMilliseconds} ms',
               style: TextStyle(color: AppPalette.of(context).accent),
             ),
           ],

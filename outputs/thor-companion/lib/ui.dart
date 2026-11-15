@@ -284,17 +284,19 @@ Widget surface({
 }) => Builder(
   builder: (context) {
     final p = AppPalette.of(context);
-    final card = Material(
-      color: p.card,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(22),
-        side: BorderSide(color: p.border),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(22),
-        child: Padding(padding: padding, child: child),
+    final card = RepaintBoundary(
+      child: Material(
+        color: p.card,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(22),
+          side: BorderSide(color: p.border),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(22),
+          child: Padding(padding: padding, child: child),
+        ),
       ),
     );
     if (copyText == null) return card;

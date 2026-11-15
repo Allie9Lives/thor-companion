@@ -45,6 +45,9 @@ final class AppCatalog {
   if(at<cached.size()&&entries.length()==0)throw new IllegalStateException("App details exceed Bluetooth limit");
   reply.put("next",at<cached.size()?at:-1);return reply;
  }
+ static synchronized JSONObject webPage(Context c,int cursor,boolean opened)throws Exception{
+  JSONArray apps=new JSONArray();int next=cursor;do{JSONObject page=opened?openPage(c,next,"web"):page(c,next,"web");JSONArray rows=page.getJSONArray("apps");for(int i=0;i<rows.length();i++)apps.put(rows.get(i));next=page.getInt("next");}while(next>=0&&apps.length()<80);return new JSONObject().put("apps",apps).put("next",next);
+ }
  static void action(Context c,String kind,String pkg,String target)throws Exception{
   if(!validPackage(pkg)||!Arrays.asList("app_open","app_close").contains(kind))throw new IllegalArgumentException("Invalid app action");
   boolean found=false;for(ResolveInfo r:launchers(c))if(r.activityInfo.packageName.equals(pkg))found=true;

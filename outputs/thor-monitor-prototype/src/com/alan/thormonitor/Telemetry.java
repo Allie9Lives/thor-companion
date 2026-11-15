@@ -26,6 +26,7 @@ final class Telemetry {
             c.getSystemService(ActivityManager.class).getMemoryInfo(mem);
             StatFs fs = new StatFs(Environment.getDataDirectory().getPath());
             j.put("schema", 1).put("sequence", sequence).put("sampled_at_ms", System.currentTimeMillis());
+            j.put("wifi_event",WifiAccess.cached(c).optLong("event"));
             j.put("elapsed_realtime_ms", SystemClock.elapsedRealtime());
             j.put("model", Build.MODEL).put("manufacturer", Build.MANUFACTURER);
             String deviceName = null;

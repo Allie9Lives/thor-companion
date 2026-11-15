@@ -28,10 +28,10 @@ public class MainActivity extends Activity {
     private final Telemetry telemetry=new Telemetry();
     private LinearLayout page;
     private SharedPreferences prefs;
-    private int screen=0,step=0,recoveryReturn=0,updatesReturn=3,renderedSetupStep=-1; // overview=0, setup=1, recovery=2, settings=3, insights=4
+    private int screen=0,step=0,recoveryReturn=0,updatesReturn=3,webOpsReturn=3,renderedSetupStep=-1; // overview=0, setup=1, recovery=2, settings=3, insights=4
     private boolean dark,reading=false,repairing=false;
     private OnboardingBackdrop onboardingBackdrop;
-    private HostUpdatesView updatesView;
+    private HostUpdatesView updatesView;private HostWebOpsView webOpsView;
     private HostOverviewView overview;private HostBatteryInsightsView insights;
     private java.util.List<BatterySample> historyCache=java.util.Collections.emptyList();private long historyReadAt;private String historyError;private java.util.List<long[]> sleepCache=java.util.Collections.emptyList();
     private int renderedPairVersion=0;
@@ -49,10 +49,12 @@ public class MainActivity extends Activity {
         step=Math.max(0,Math.min(5,(b!=null?b.getInt("step"):prefs.getInt("setup_step",0))+(oldFlow?1:0)));
         prefs.edit().putInt("setup_flow_version",2).apply();
         try{ThorControls.socketName(this);}catch(Exception ignored){}
-        recoveryReturn=b==null?0:b.getInt("recoveryReturn",0);updatesReturn=b==null?3:b.getInt("updatesReturn",3);
-        build();
+        recoveryReturn=b==null?0:b.getInt("recoveryReturn",0);updatesReturn=b==null?3:b.getInt("updatesReturn",3);webOpsReturn=b==null?(prefs.getBoolean("setup_complete",false)?3:1):b.getInt("webOpsReturn",3);
+        build();immersive(getWindow());
     }
-    @Override public void onSaveInstanceState(Bundle b){rememberFocus();Bundle focusState=new Bundle();for(java.util.Map.Entry<String,String> item:focusMemory.entrySet())focusState.putString(item.getKey(),item.getValue());b.putBundle("focusMemory",focusState);b.putInt("screen",screen);b.putInt("step",step);b.putInt("recoveryReturn",recoveryReturn);b.putInt("updatesReturn",updatesReturn);b.putStringArrayList("expandedSections",new java.util.ArrayList<>(expandedSections));super.onSaveInstanceState(b);}
+    private void immersive(Window window){WindowInsetsController bars=window.getInsetsController();if(bars!=null){bars.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);bars.hide(WindowInsets.Type.systemBars());}}
+    @Override public void onWindowFocusChanged(boolean focused){super.onWindowFocusChanged(focused);if(focused)immersive(getWindow());}
+    @Override public void onSaveInstanceState(Bundle b){rememberFocus();Bundle focusState=new Bundle();for(java.util.Map.Entry<String,String> item:focusMemory.entrySet())focusState.putString(item.getKey(),item.getValue());b.putBundle("focusMemory",focusState);b.putInt("screen",screen);b.putInt("step",step);b.putInt("recoveryReturn",recoveryReturn);b.putInt("updatesReturn",updatesReturn);b.putInt("webOpsReturn",webOpsReturn);b.putStringArrayList("expandedSections",new java.util.ArrayList<>(expandedSections));super.onSaveInstanceState(b);}
     private int dp(float n){return Math.round(n*getResources().getDisplayMetrics().density);}
     private boolean granted(String name){return checkSelfPermission(name)==PackageManager.PERMISSION_GRANTED;}
     private boolean nearby(){return granted(Manifest.permission.BLUETOOTH_CONNECT)&&granted(Manifest.permission.BLUETOOTH_ADVERTISE);}
@@ -134,7 +136,7 @@ public class MainActivity extends Activity {
         s.setOnCheckedChangeListener((v,checked)->{prefs.edit().putBoolean(key,checked).apply();if(key.equals("files_enabled")){try{FileAccess.set(this,checked);}catch(Exception e){Toast.makeText(this,"Could not start file access",Toast.LENGTH_LONG).show();}}else if(key.equals("protect_recents")){HostBackgroundProtection.apply(this);Recovery.attempt(this);handler.post(this::build);}else if(key.equals("rest_keep_plugged"))MonitorService.restChanged();else if(key.equals("recover_controls"))Recovery.enable(this,checked);else if(key.equals("always_on")&&MonitorService.running)startMonitoring(false);});
     }
     private String focusKey(int page,int setupStep){return page+":"+(page==1?setupStep:-1);}
-    private String focusLabel(View view){if(view instanceof EditText)return "input:"+view.getId();if(view instanceof TextView)return ((TextView)view).getText().toString();return view!=null&&view.getContentDescription()!=null?view.getContentDescription().toString():"";}
+    private String focusLabel(View view){if(view!=null&&view.getTag() instanceof String&&((String)view.getTag()).startsWith("service:"))return (String)view.getTag();if(view instanceof EditText)return "input:"+view.getId();if(view instanceof TextView)return ((TextView)view).getText().toString();return view!=null&&view.getContentDescription()!=null?view.getContentDescription().toString():"";}
     private void rememberFocus(){if(navigationRoot!=null&&renderedScreen>=0){String label=focusLabel(HostMotion.anchor(navigationRoot,getCurrentFocus()));if(!label.isEmpty())focusMemory.put(focusKey(renderedScreen,renderedSetupStep),label);}}
     private int renderedScreen=-1;
     private void build(){
@@ -156,9 +158,9 @@ public class MainActivity extends Activity {
         View icon=new View(this){protected void onDraw(Canvas c){super.onDraw(c);Paint p=new Paint(3);p.setColor(accent);c.drawRoundRect(0,0,getWidth(),getHeight(),dp(12),dp(12),p);p.setColor(onAccent);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(dp(1.6f));c.drawRoundRect(dp(10),dp(8),dp(30),dp(21),dp(3),dp(3),p);c.drawRoundRect(dp(10),dp(24),dp(30),dp(32),dp(2),dp(2),p);}};
         header.addView(icon,new LinearLayout.LayoutParams(dp(40),dp(40)));TextView name=text("Thor Monitor",20,true);name.setPadding(dp(12),0,0,0);header.addView(name,new LinearLayout.LayoutParams(0,-2,1));
         ImageButton theme=new ImageButton(this);theme.setImageResource(getResources().getIdentifier("ic_settings","drawable",getPackageName()));theme.setImageTintList(ColorStateList.valueOf(muted));theme.setPadding(dp(12),dp(12),dp(12),dp(12));HostMotion.style(theme,Color.TRANSPARENT,accent,border,14,false);theme.setContentDescription(screen==0?"Settings":"Appearance");theme.setOnClickListener(v->{if(screen==0){screen=3;build();}else appearance();});header.addView(theme,new LinearLayout.LayoutParams(dp(48),dp(48)));page.addView(header);if(HostTheme.current(this).rainbow){gap(page,14);page.addView(HostTheme.stripe(this));}gap(page,screen==0?14:screen==1?20:26);
-        if(screen==3||screen==4||screen==5||screen==6||screen==7||screen==8){ImageButton back=new ImageButton(this);back.setImageResource(getResources().getIdentifier("ic_back","drawable",getPackageName()));back.setImageTintList(ColorStateList.valueOf(ink));back.setBackgroundColor(Color.TRANSPARENT);back.setContentDescription(screen==8&&updatesReturn==1?"Back to setup":screen==5||screen==6||screen==7||screen==8?"Back to Settings":"Back to Overview");back.setPadding(dp(12),dp(12),dp(12),dp(12));HostMotion.style(back,Color.TRANSPARENT,accent,border,14,false);back.setOnClickListener(v->{screen=screen==8?updatesReturn:screen==5||screen==6||screen==7?3:0;build();});LinearLayout.LayoutParams backSize=new LinearLayout.LayoutParams(dp(48),dp(48));backSize.rightMargin=dp(8);header.addView(back,0,backSize);}
+        if(screen==3||screen==4||screen==5||screen==6||screen==7||screen==8||screen==9){ImageButton back=new ImageButton(this);back.setImageResource(getResources().getIdentifier("ic_back","drawable",getPackageName()));back.setImageTintList(ColorStateList.valueOf(ink));back.setBackgroundColor(Color.TRANSPARENT);back.setContentDescription((screen==8&&updatesReturn==1||screen==9&&webOpsReturn==1)?"Back to setup":screen==5||screen==6||screen==7||screen==8||screen==9?"Back to Settings":"Back to Overview");back.setPadding(dp(12),dp(12),dp(12),dp(12));HostMotion.style(back,Color.TRANSPARENT,accent,border,14,false);back.setOnClickListener(v->{screen=screen==8?updatesReturn:screen==9?webOpsReturn:screen==5||screen==6||screen==7||screen==9?3:0;build();});LinearLayout.LayoutParams backSize=new LinearLayout.LayoutParams(dp(48),dp(48));backSize.rightMargin=dp(8);header.addView(back,0,backSize);}
 
-        if(screen==1)setup();else if(screen==2)recovery();else if(screen==3)hostSettings();else if(screen==5)powerSettings();else if(screen==6)aboutPage();else if(screen==7)creditsPage();else if(screen==8){updatesView=new HostUpdatesView(this);page.addView(updatesView);}else if(screen==4){insights=new HostBatteryInsightsView(this);page.addView(insights);}else home();
+        if(screen==1)setup();else if(screen==2)recovery();else if(screen==3)hostSettings();else if(screen==5)powerSettings();else if(screen==6)aboutPage();else if(screen==7)creditsPage();else if(screen==9){webOpsView=new HostWebOpsView(this);page.addView(webOpsView);}else if(screen==8){updatesView=new HostUpdatesView(this);page.addView(updatesView);}else if(screen==4){insights=new HostBatteryInsightsView(this);page.addView(insights);}else home();
         if(screen==1 && primary!=null) {
             page.removeView(primary);if(backAction!=null)page.removeView(backAction);
             FrameLayout root=new FrameLayout(this);root.setBackgroundColor(bg);
@@ -183,7 +185,8 @@ public class MainActivity extends Activity {
         if(screen!=2)Recovery.stopPairingDiscovery(this);
         update();
     }
-    private void controllerDialog(Dialog dialog){
+    void controllerDialog(Dialog dialog){
+        immersive(dialog.getWindow());
         HostMotion.defaults(dialog.getWindow().getDecorView());HostMotion.navigation(dialog.getWindow().getDecorView());
         dialog.setOnKeyListener((d,code,event)->{
             int direction=code==KeyEvent.KEYCODE_DPAD_DOWN?View.FOCUS_DOWN:code==KeyEvent.KEYCODE_DPAD_UP?View.FOCUS_UP:code==KeyEvent.KEYCODE_DPAD_LEFT?View.FOCUS_LEFT:code==KeyEvent.KEYCODE_DPAD_RIGHT?View.FOCUS_RIGHT:0;
@@ -205,14 +208,25 @@ public class MainActivity extends Activity {
         previous.animate().cancel();if(previous instanceof ViewGroup)((ViewGroup)previous).setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);previous.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         FrameLayout scene=new FrameLayout(this);scene.setBackgroundColor(bg);scene.addView(previous,new FrameLayout.LayoutParams(-1,-1));scene.addView(next,new FrameLayout.LayoutParams(-1,-1));setContentView(scene);
         boolean navigating=screen!=renderedScreen||(screen==1&&step!=renderedSetupStep);
-        boolean back=screen==0||(renderedScreen==screen&&screen==1&&step<renderedSetupStep)||(screen==3&&(renderedScreen==5||renderedScreen==6||renderedScreen==7||renderedScreen==8))||(screen==1&&(renderedScreen==2||renderedScreen==8));
+        boolean back=screen==0||(renderedScreen==screen&&screen==1&&step<renderedSetupStep)||(screen==3&&(renderedScreen==5||renderedScreen==6||renderedScreen==7||renderedScreen==8||renderedScreen==9))||(screen==1&&(renderedScreen==2||renderedScreen==8));
         float travel=navigating?dp(back?-22:22):0;
         next.setAlpha(0);next.setTranslationX(travel);next.setScaleX(navigating?.992f:1);next.setScaleY(navigating?.992f:1);
         next.animate().alpha(1).translationX(0).scaleX(1).scaleY(1).setDuration(navigating?320:180).setInterpolator(HostMotion.EASE).withLayer().start();
         previous.animate().alpha(0).translationX(-travel*.5f).setDuration(200).setInterpolator(HostMotion.EASE).withLayer().withEndAction(()->scene.removeView(previous)).start();
     }
     private void home(){
-        overview=new HostOverviewView(this,()->{screen=4;build();},()->startMonitoring(false));page.addView(overview);
+        overview=new HostOverviewView(this,()->{screen=4;build();},()->startMonitoring(false),this::toggleWebService,()->toggleHostService("ftp"),this::toggleMonitoring);page.addView(overview);
+    }
+    private final java.util.Set<String> serviceChanges=new java.util.HashSet<>();
+    private void toggleWebService(){if(!WebOps.configured(this)){openWebOps();return;}toggleHostService("web");}
+    private void toggleMonitoring(){
+        if(!MonitorService.running){prefs.edit().putBoolean("readings_paused",false).apply();startMonitoring(false);return;}
+        if(MonitorService.paused(this)){MonitorService.pauseReadings(this,false);update();return;}
+        AlertDialog dialog=new AlertDialog.Builder(this,dialogTheme()).setTitle("Pause monitoring?").setMessage("Readings and battery history will pause. Remote controls stay available. This does not put the Thor to sleep.").setNegativeButton("Cancel",null).setPositiveButton("Pause",(d,w)->{MonitorService.pauseReadings(this,true);update();}).create();dialog.show();controllerDialog(dialog);
+    }
+    private void toggleHostService(String key){
+        if(!serviceChanges.add(key))return;HostOverviewView view=overview;TextView pill=key.equals("web")?view.webStatus:view.ftpStatus;pill.setAlpha(.6f);
+        new Thread(()->{String error=null;try{if(key.equals("web"))HostServices.command(this,WebOps.running()?"web_ops_stop":"web_ops_start","host");else FtpAccess.command(this,FtpAccess.running()?"ftp_stop":"ftp_start","host");}catch(Exception e){error=e.getMessage();}String message=error;handler.post(()->{serviceChanges.remove(key);pill.setAlpha(1f);if(!isDestroyed()){if(message!=null)Toast.makeText(this,message,Toast.LENGTH_LONG).show();update();}});},"host-service-toggle").start();
     }
     private void hostSettings(){
         page.addView(text("Settings",28,true));gap(page,16);
@@ -238,7 +252,9 @@ public class MainActivity extends Activity {
         button(files,"Choose internal folder",false,()->chooseFolder(51));body(files,FileAccess.folder(this,"internal").isEmpty()?"No internal folder selected":"Internal folder selected");
         button(files,"Choose microSD folder",false,()->chooseFolder(52));body(files,FileAccess.folder(this,"sd").isEmpty()?"No microSD folder selected":"microSD folder selected");
         button(files,"Revoke network access",false,()->{FileAccess.revoke(this);build();});
-        LinearLayout ftp=disclosure("FTP server","wifi","Encrypted desktop transfers");
+        LinearLayout webOps=box(null);webOps.setPadding(dp(4),dp(4),dp(4),dp(4));
+        navigationRow(webOps,"Web Ops","Browser access over Wi-Fi or VPN","browser",false,this::openWebOps);
+        LinearLayout ftp=disclosure("FTP server","network","Encrypted desktop transfers");
         ftpStatus=body(ftp,FtpAccess.running()?"Running · encrypted FTP":"Stopped");
         body(ftp,"Requires shared-storage access for Internal and microSD.");
         ftpButton=button(ftp,FtpAccess.running()?"Stop FTP server":"Start FTP server",false,()->{try{FtpAccess.command(this,FtpAccess.running()?"ftp_stop":"ftp_start","local");build();}catch(Exception e){Toast.makeText(this,e.getMessage(),Toast.LENGTH_LONG).show();}});
@@ -256,6 +272,7 @@ public class MainActivity extends Activity {
         navigationRow(app,"Sound credits","Tranquility by Helton Yan","options",false,this::soundCredits);gap(page,8);
     }
 
+    private void openWebOps(){webOpsReturn=screen==1?1:3;screen=9;build();}
     private void openUpdates(){updatesReturn=screen==1?1:3;screen=8;build();}
     private void aboutPage(){
         page.addView(text("About",28,true));gap(page,20);LinearLayout about=box(null);String version="";try{version=getPackageManager().getPackageInfo(getPackageName(),0).versionName;}catch(Exception ignored){}body(about,"Thor Monitor "+version);LinearLayout author=new LinearLayout(this);author.setGravity(Gravity.CENTER_VERTICAL);author.setPadding(0,dp(12),0,0);ImageView avatar=new ImageView(this);avatar.setImageResource(getResources().getIdentifier("author_avatar","drawable",getPackageName()));avatar.setScaleType(ImageView.ScaleType.CENTER_CROP);android.graphics.drawable.GradientDrawable circle=new android.graphics.drawable.GradientDrawable();circle.setShape(android.graphics.drawable.GradientDrawable.OVAL);circle.setColor(card);avatar.setBackground(circle);avatar.setClipToOutline(true);author.addView(avatar,new LinearLayout.LayoutParams(dp(56),dp(56)));LinearLayout identity=new LinearLayout(this);identity.setOrientation(LinearLayout.VERTICAL);identity.setPadding(dp(14),0,0,0);identity.addView(text("Allie Stark",18,true));TextView handle=text("@Allie9Lives",14,false);handle.setTextColor(muted);identity.addView(handle);author.addView(identity,new LinearLayout.LayoutParams(0,-2,1));about.addView(author);body(about,"© 2026 Allie Stark (Allie9Lives)");button(about,"GitHub · Allie9Lives",false,()->{try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/Allie9Lives")));}catch(Exception e){Toast.makeText(this,"Couldn’t open GitHub",Toast.LENGTH_SHORT).show();}});
@@ -333,6 +350,7 @@ public class MainActivity extends Activity {
             button(files,"Choose internal folder",false,()->chooseFolder(51));button(files,"Choose microSD folder",false,()->chooseFolder(52));
             LinearLayout locator=disclosure("Find my Thor","locator","Show a Stop button over other apps");body(locator,"Allow the overlay to stop locator sounds from any app.");button(locator,"Overlay permission",false,()->startActivityForResult(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName())),54));
             LinearLayout keyboard=disclosure("Phone keyboard","keyboard","Type from your phone");body(keyboard,"Enable Thor Remote Keyboard, then select it.");button(keyboard,"Enable keyboard",false,()->startActivity(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)));button(keyboard,"Select keyboard",false,()->getSystemService(android.view.inputmethod.InputMethodManager.class).showInputMethodPicker());
+            LinearLayout web=disclosure("Web Ops","browser","Optional browser access");body(web,"Set an owner login to use your Thor from a browser on Wi-Fi or a private VPN.");button(web,"Set up Web Ops",false,this::openWebOps);
             LinearLayout updater=disclosure("Updates","options","GitHub releases and Obtainium");body(updater,"Use the built-in checker or add Thor Monitor to Obtainium.");button(updater,"Check for updates",false,()->{openUpdates();HostUpdates.check(this,true);});button(updater,"Add to Obtainium",false,()->HostUpdates.obtainium(this));
             LinearLayout saving=disclosure("Battery saving","moon","Set up overnight pauses after connecting");body(saving,"In Settings → Battery saving, add trusted Wi-Fi for overnight pauses. Default: three hours with screens off, 9 PM–6 AM. Monitoring stays awake until you add a trusted network.");
         }else{
@@ -429,6 +447,7 @@ public class MainActivity extends Activity {
     @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] results){super.onRequestPermissionsResult(request,permissions,results);update();}
     private void update(){
         if(updatesView!=null)updatesView.refresh();
+        if(screen==9&&webOpsView!=null)webOpsView.refresh();
         if(screen==2&&Recovery.paired(this)&&Recovery.pairVersion!=renderedPairVersion){repairing=false;build();return;}
         if((screen==0||screen==3)&&primary!=null)primary.setText(MonitorService.running?"Stop monitoring":"Start monitoring");
         if(nearbyAction!=null){nearbyAction.setVisibility(nearby()?View.GONE:View.VISIBLE);nearbyAction.setEnabled(!nearby());nearbyAction.setAlpha(nearby()?0.45f:1);nearbyAction.setText(nearby()?"Bluetooth allowed":"Allow nearby devices");}
@@ -443,8 +462,8 @@ public class MainActivity extends Activity {
         if(portField!=null&&portField.length()==0&&!portField.hasFocus()&&Recovery.pairingPort>0)portField.setText(String.valueOf(Recovery.pairingPort));
         if((status==null&&overview==null&&insights==null)||reading)return;reading=true;
         reader.execute(()->{
-            JSONObject sample=telemetry.sample(this,0);boolean ready=controlsStatus!=null&&Recovery.helperReady(this);
-            try{BatteryHistory store=BatteryHistory.get(this);store.record(sample);if(System.currentTimeMillis()-historyReadAt>=30000){historyReadAt=System.currentTimeMillis();historyCache=store.localSamples(System.currentTimeMillis()-7L*86400000);sleepCache=store.sleepEvents();historyError=null;}}catch(Exception e){historyError="Could not read local battery history.";}
+            JSONObject previous=MonitorService.running&&MonitorService.paused(this)?MonitorService.lastReading():null;JSONObject sample=previous==null?telemetry.sample(this,0):previous;boolean ready=controlsStatus!=null&&Recovery.helperReady(this);
+            try{BatteryHistory store=BatteryHistory.get(this);if(!MonitorService.paused(this))store.record(sample);if(System.currentTimeMillis()-historyReadAt>=30000){historyReadAt=System.currentTimeMillis();historyCache=store.localSamples(System.currentTimeMillis()-7L*86400000);sleepCache=store.sleepEvents();historyError=null;}}catch(Exception e){historyError="Could not read local battery history.";}
             handler.post(()->{reading=false;if(isFinishing()||isDestroyed())return;
                 if(overview!=null)overview.update(sample,historyCache);
                 if(insights!=null){insights.update(sample,historyCache);insights.setSleepEvents(sleepCache);insights.showError(historyError);}
@@ -456,7 +475,7 @@ public class MainActivity extends Activity {
     }
 
     private void chooseFolder(int request){Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION|Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION|Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);startActivityForResult(i,request);}
-    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==53||request==54){build();return;}if((request==51||request==52)&&result==RESULT_OK&&data!=null&&data.getData()!=null){try{FileAccess.choose(this,request==51?"internal":"sd",data.getData(),data.getFlags());build();}catch(Exception e){Toast.makeText(this,"Folder access was not granted",Toast.LENGTH_LONG).show();}}}
+    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==57&&result==RESULT_OK&&data!=null&&data.getData()!=null){final Uri uri=data.getData();reader.execute(()->{try(java.io.OutputStream out=getContentResolver().openOutputStream(uri)){out.write(WebTls.root(this).getEncoded());handler.post(()->Toast.makeText(this,"Browser certificate exported",Toast.LENGTH_SHORT).show());}catch(Exception e){handler.post(()->Toast.makeText(this,"Could not export certificate",Toast.LENGTH_LONG).show());}});return;}if(request==53||request==54){build();return;}if((request==51||request==52)&&result==RESULT_OK&&data!=null&&data.getData()!=null){try{FileAccess.choose(this,request==51?"internal":"sd",data.getData(),data.getFlags());build();}catch(Exception e){Toast.makeText(this,"Folder access was not granted",Toast.LENGTH_LONG).show();}}}
     @Override public void onResume(){super.onResume();HostBackgroundProtection.apply(this);HostUpdates.check(this,false);if(onboardingBackdrop!=null)onboardingBackdrop.setRunning(true);handler.removeCallbacks(refresh);handler.post(refresh);}
     @Override public void onPause(){stickNavigation.reset();if(onboardingBackdrop!=null)onboardingBackdrop.setRunning(false);handler.removeCallbacks(refresh);super.onPause();}
     @Override public void onDestroy(){handler.removeCallbacksAndMessages(null);reader.shutdownNow();Recovery.stopPairingDiscovery(this);super.onDestroy();}
@@ -495,5 +514,5 @@ public class MainActivity extends Activity {
         }
         return super.onGenericMotionEvent(event);
     }
-    @Override public void onBackPressed(){if(screen==8){screen=updatesReturn;build();}else if(screen==5||screen==6||screen==7){screen=3;build();}else if(screen==3||screen==4||screen==5){screen=0;build();}else if(screen==2){leaveRecovery();}else if(screen==1&&step>0){step--;build();}else super.onBackPressed();}
+    @Override public void onBackPressed(){if(screen==8){screen=updatesReturn;build();}else if(screen==9){screen=webOpsReturn;build();}else if(screen==5||screen==6||screen==7||screen==9){screen=3;build();}else if(screen==3||screen==4||screen==5){screen=0;build();}else if(screen==2){leaveRecovery();}else if(screen==1&&step>0){step--;build();}else super.onBackPressed();}
 }

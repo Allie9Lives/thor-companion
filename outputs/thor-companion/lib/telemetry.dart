@@ -72,8 +72,10 @@ class DeviceStats {
     this.sdTotalBytes,
     this.sdFreeBytes,
     this.inputWatts,
+    this.wifiEvent,
   });
 
+  final int? wifiEvent;
   final int? healthCode, fullChargeUah, designChargeUah, cycleCount;
   String get healthLabel => switch (healthCode) {
     2 => 'Good',
@@ -92,6 +94,7 @@ class DeviceStats {
     // The host omits a field or sends null when it cannot supply that reading.
     // Never coerce a missing or malformed value to a convincing zero.
     return DeviceStats(
+      wifiEvent: _nonnegative(j['we']),
       keepAlivePaused: j['keep_alive_paused'] is bool
           ? j['keep_alive_paused'] as bool
           : null,

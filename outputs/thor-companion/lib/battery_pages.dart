@@ -26,13 +26,13 @@ class BatteryAlertsPage extends StatelessWidget {
             },
           );
       return Scaffold(
-        appBar: AppBar(title: const Text('Battery notifications')),
+        appBar: AppBar(title: const Text('Notifications')),
         body: ListView(
           padding: const EdgeInsets.all(20),
           children: [
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Battery notifications'),
+              title: const Text('Notifications'),
               subtitle: const Text('Notify this phone about your Thor.'),
               value: o.enabled,
               onChanged: c.isDemo ? null : (v) => c.enableBatteryAlerts(v),
@@ -60,6 +60,47 @@ class BatteryAlertsPage extends StatelessWidget {
                     'Disconnected from power',
                     o.unplugged,
                     (v) => o.unplugged = v,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            surface(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Connections',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+                  ),
+                  option(
+                    'Wi-Fi network changed',
+                    o.wifiChanged,
+                    (v) => o.wifiChanged = v,
+                  ),
+                  option(
+                    'Wi-Fi disconnected',
+                    o.wifiLost,
+                    (v) => o.wifiLost = v,
+                  ),
+                  option(
+                    'Wi-Fi sign-in needed',
+                    o.wifiSignIn,
+                    (v) => o.wifiSignIn = v,
+                  ),
+                  option(
+                    'Bluetooth connection lost',
+                    o.bluetoothLost,
+                    (v) => o.bluetoothLost = v,
+                  ),
+                  option(
+                    'Bluetooth restored',
+                    o.bluetoothBack,
+                    (v) => o.bluetoothBack = v,
+                  ),
+                  const Text(
+                    'Bluetooth loss is reported after 15 seconds. Intentional disconnects and sleep are ignored.',
+                    style: TextStyle(fontSize: 14),
                   ),
                 ],
               ),

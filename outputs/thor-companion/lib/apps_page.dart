@@ -30,7 +30,11 @@ class _AppsPageState extends State<AppsPage> {
   void initState() {
     super.initState();
     target = widget.initialTarget == 'bottom' ? 'bottom' : 'top';
-    icons = AppIconCache(widget.controller.selected?.id ?? 'preview');
+    icons = AppIconCache(
+      widget.controller.selected?.id ?? 'preview',
+      network: widget.controller.appImageConnection,
+    );
+    icons.addListener(refreshIcons);
     previousControls = widget.controller.controlsVisible;
     widget.controller.controlsVisible = false;
     unawaited(load());
@@ -39,6 +43,10 @@ class _AppsPageState extends State<AppsPage> {
         unawaited(refreshOpen());
       }
     });
+  }
+
+  void refreshIcons() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -84,7 +92,11 @@ class _AppsPageState extends State<AppsPage> {
   Future<void> load() async {
     if (loading || active != null) return;
     icons.close();
-    icons = AppIconCache(widget.controller.selected?.id ?? 'preview');
+    icons = AppIconCache(
+      widget.controller.selected?.id ?? 'preview',
+      network: widget.controller.appImageConnection,
+    );
+    icons.addListener(refreshIcons);
     setState(() {
       loading = true;
       error = null;

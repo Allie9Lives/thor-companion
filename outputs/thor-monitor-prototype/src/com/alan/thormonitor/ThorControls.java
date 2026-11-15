@@ -62,7 +62,7 @@ final class ThorControls {
         }catch(Exception e){return new JSONObject();}
     }
     boolean helperReady() { JSONObject status=helperStatus(context);return status.optBoolean("ok")&&status.optInt("protocol")>=9; }
-    static int outdatedHelperPid(Context c){JSONObject status=helperStatus(c);return status.optBoolean("ok")&&status.optInt("protocol")<9?status.optInt("peer_pid",0):0;}
+    static int outdatedHelperPid(Context c){JSONObject status=helperStatus(c);return status.optBoolean("ok")&&status.optInt("protocol")<10?status.optInt("peer_pid",0):0;}
     private boolean helper(String command,int value) {
         try(LocalSocket socket=new LocalSocket()) {
             socket.connect(new LocalSocketAddress(socketName(context),LocalSocketAddress.Namespace.ABSTRACT));
@@ -106,7 +106,7 @@ final class ThorControls {
     synchronized JSONObject snapshot() {
         JSONObject j=new JSONObject();
         try {
-            j.put("v",1).put("settings",helperReady()).put("power_control",helperReady()).put("finder",true).put("find",FindThor.ringing?1:0).put("history",true);
+            j.put("v",1).put("svc",HostServices.bits(context)).put("settings",helperReady()).put("power_control",helperReady()).put("finder",true).put("find",FindThor.ringing?1:0).put("history",true);
             JSONObject rest=PowerSaving.snapshot(context);for(java.util.Iterator<String> keys=rest.keys();keys.hasNext();){String key=keys.next();j.put(key,rest.get(key));}
             j.put("wake_control",true).put("screens_awake",context.getSystemService(PowerManager.class).isInteractive());
             j.put("screenshots",false).put("wifi_screenshots",true);
@@ -154,6 +154,7 @@ final class ThorControls {
             String key=j.getString("set"), target=j.optString("target","");
             Object raw=j.get("value");
             historyPage=null;
+            if(key.startsWith("wifi_")){try{historyPage=WifiAccess.command(context,key,raw,id);}catch(JSONException e){throw new IllegalArgumentException("Invalid Wi-Fi details");}return true;}
             if(key.equals("apps")||key.equals("apps_open")) {
                 if(!(raw instanceof Number)||((Number)raw).doubleValue()!=((Number)raw).intValue())throw new IllegalArgumentException("App cursor required");historyPage=key.equals("apps_open")?AppCatalog.openPage(context,((Number)raw).intValue(),id):AppCatalog.page(context,((Number)raw).intValue(),id);return true;
             }
@@ -163,11 +164,19 @@ final class ThorControls {
             }
             if(key.equals("ftp_start")||key.equals("ftp_stop")||key.equals("ftp_status")) {
                 if(!(raw instanceof Number)||((Number)raw).doubleValue()!=0)throw new IllegalArgumentException("Invalid FTP action");
-                historyPage=FtpAccess.command(context,key,id);return true;
+                historyPage=FtpAccess.command(context,key,id).put("svc",HostServices.bits(context));return true;
+            }
+            if(key.equals("web_ops_status")||key.equals("web_ops_start")||key.equals("web_ops_stop")||key.equals("monitor_pause")||key.equals("monitor_resume")){
+                if(!(raw instanceof Number)||((Number)raw).doubleValue()!=0)throw new IllegalArgumentException("Invalid Web Ops action");
+                historyPage=HostServices.command(context,key,id);return true;
             }
             if(key.equals("network_session")) {
                 if(!(raw instanceof Number)||((Number)raw).doubleValue()!=1)throw new IllegalArgumentException("Invalid network session");
                 historyPage=FileAccess.networkSession(context,id);return true;
+            }
+            if(key.equals("icons_session")) {
+                if(!(raw instanceof Number)||((Number)raw).doubleValue()!=0)throw new IllegalArgumentException("Invalid icon session");
+                historyPage=FileAccess.iconSession(context,id);return true;
             }
             if(key.equals("files_session")) {
                 if(!(raw instanceof Number)||((Number)raw).intValue()!=1||((Number)raw).doubleValue()!=1)throw new IllegalArgumentException("Invalid file session");

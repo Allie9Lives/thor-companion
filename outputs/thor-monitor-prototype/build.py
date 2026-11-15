@@ -34,6 +34,11 @@ if checksums.exists():
         digest,name=row.split()
         if hashlib.sha256((checksums.parent/name).read_bytes()).hexdigest()!=digest:
             raise SystemExit("Dependency checksum mismatch: "+name)
+import json
+web_vendor=project / "assets/web-ops/vendor"
+if (web_vendor/"integrity.json").exists():
+    for name,digest in json.loads((web_vendor/"integrity.json").read_text())["files"].items():
+        if hashlib.sha256((web_vendor/name).read_bytes()).hexdigest()!=digest:raise SystemExit("Web dependency checksum mismatch: "+name)
 dependencies=[]
 native=[]
 for aar in sorted((project / "third_party").glob("*.aar")):
@@ -53,6 +58,8 @@ run(build_tools / "aapt2", "link", "-I", android, "--manifest", project / "Andro
 with zipfile.ZipFile(build / "raw.apk", "a", compression=zipfile.ZIP_DEFLATED) as z:
     for dex in sorted((build / "dex").glob("*.dex")):z.write(dex,dex.name)
     for name,data in native:z.writestr(name,data)
+    for asset in sorted((project/"assets").rglob("*")):
+        if asset.is_file():z.write(asset,"assets/"+asset.relative_to(project/"assets").as_posix())
     resources={}
     for dependency in dependencies:
         with zipfile.ZipFile(dependency) as source:

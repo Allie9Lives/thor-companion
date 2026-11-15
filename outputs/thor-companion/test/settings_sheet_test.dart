@@ -79,7 +79,7 @@ void main() {
       final labels = [
         'Appearance',
         'Battery widgets',
-        'Battery notifications',
+        'Notifications',
         'Battery insights',
         'Files',
         'Connection health',

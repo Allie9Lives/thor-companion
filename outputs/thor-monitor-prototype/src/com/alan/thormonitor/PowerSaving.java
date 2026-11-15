@@ -21,6 +21,7 @@ final class PowerSaving {
   Calendar clock=Calendar.getInstance();int minute=clock.get(Calendar.HOUR_OF_DAY)*60+clock.get(Calendar.MINUTE);
   boolean powered=externalPower(app),keepPlugged=prefs.getBoolean("rest_keep_plugged",false);
   boolean pause=RestPolicy.shouldPause(prefs.getBoolean("rest_manual",false),powered,keepPlugged,mode(),idle,!(powered&&keepPlugged)&&mode()==0&&idle&&trusted(),minute,start(),end(),idleSince<0?0:elapsed-idleSince,delay()*60000L);
+  if(WebOps.awake(app))pause=false;
   if(pause!=suspended){suspended=pause;BatteryHistory.get(app).sleepEvent(now,pause?1:0);}
   prefs.edit().putBoolean("rest_suspended",pause).apply();
   schedule(now,idle?Math.max(0,delay()*60000L-(elapsed-idleSince)):-1);

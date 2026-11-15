@@ -13,13 +13,16 @@ import java.util.concurrent.*;
 public class MonitorService extends Service {
     static volatile ActivityMonitor activity;
     private static volatile MonitorService instance;
-    static void refreshFocusedApps(){MonitorService s=instance;if(s!=null&&s.activity!=null&&s.timer!=null)s.timer.execute(()->{s.activity.invalidate();s.activity.sample(s.latest==null?new JSONObject():s.latest);});}
+    static void refreshFocusedApps(){MonitorService s=instance;if(s!=null&&!paused(s)&&s.activity!=null&&s.timer!=null)s.timer.execute(()->{s.activity.invalidate();s.activity.sample(s.latest==null?new JSONObject():s.latest);});}
     static void locatorChanged(){MonitorService service=instance;if(service!=null)service.timeoutHandler.post(()->{if(!service.closing&&running){service.notifySubscribers();}});}
     private final Telemetry telemetry = new Telemetry();
     public static volatile String state = "Monitoring stopped";
     public static volatile long sequence = 0, lastSample = 0;
     public static volatile int connections = 0;
     public static volatile boolean running = false;
+    static boolean paused(Context c){return c.getSharedPreferences("monitor",0).getBoolean("readings_paused",false);}
+    static JSONObject lastReading(){MonitorService s=instance;return s==null?null:s.latest;}
+    static void pauseReadings(Context c,boolean pause){c.getSharedPreferences("monitor",0).edit().putBoolean("readings_paused",pause).apply();MonitorService s=instance;if(s!=null&&s.timer!=null)s.timer.execute(()->{if(!pause){s.capture("resume");s.notifySubscribers();}s.evaluatePower();});}
     public static volatile boolean continuous = false;
     private boolean bluetoothStarting = false, monitoringStarted = false;
     private volatile int gattEpoch;
@@ -27,9 +30,10 @@ public class MonitorService extends Service {
     private final android.net.ConnectivityManager.NetworkCallback networkCallback=new android.net.ConnectivityManager.NetworkCallback(){
         private android.net.Network lastWifi;
         @Override public void onCapabilitiesChanged(android.net.Network network,android.net.NetworkCapabilities caps){
+            if(caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI))WifiAccess.refresh(MonitorService.this);
             if(caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)&&!network.equals(lastWifi)){lastWifi=network;if(powerSaving!=null){powerSaving.invalidateNetwork();if(timer!=null)timer.execute(()->evaluatePower());}Recovery.networkAvailable(MonitorService.this);}
         }
-        @Override public void onLost(android.net.Network network){if(network.equals(lastWifi)){lastWifi=null;if(powerSaving!=null){powerSaving.invalidateNetwork();if(timer!=null)timer.execute(()->evaluatePower());}}}
+        @Override public void onLost(android.net.Network network){if(network.equals(lastWifi)){WifiAccess.refresh(MonitorService.this);lastWifi=null;if(powerSaving!=null){powerSaving.invalidateNetwork();if(timer!=null)timer.execute(()->evaluatePower());}}}
     };
     public static volatile long activeUntil = 0;
     private static final long TEST_MS = 10 * 60 * 1000;
@@ -81,13 +85,13 @@ public class MonitorService extends Service {
         registerReceiver(radioReceiver,new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED));
         try {getSystemService(android.net.ConnectivityManager.class).registerNetworkCallback(new android.net.NetworkRequest.Builder().addTransportType(android.net.NetworkCapabilities.TRANSPORT_WIFI).build(),networkCallback);}catch(Exception ignored){}
         activity=new ActivityMonitor(this);
-        capture("start");
+        WifiAccess.refresh(this);capture("start");
         try{FileAccess.start(this);}catch(Exception e){event("files_unavailable",e.getClass().getSimpleName());}
         timer=Executors.newSingleThreadScheduledExecutor();
         timer.scheduleWithFixedDelay(()->{
             try {
                 if(activeUntil>0 && SystemClock.elapsedRealtime()>=activeUntil){stopSelf();return;}
-                capture("timer");activity.sample(latest);evaluatePower();notifySubscribers();Recovery.attempt(this);
+                WifiAccess.refresh(this);WebOps.refresh(this);if(!paused(this)){capture("timer");activity.sample(latest);notifySubscribers();}evaluatePower();Recovery.attempt(this);
                 if(server==null)timeoutHandler.post(()->startBluetooth());
             }catch(Exception e){event("sample_error",e.getClass().getSimpleName());}
         },30,30,TimeUnit.SECONDS);
@@ -141,13 +145,14 @@ public class MonitorService extends Service {
     }
 
     private synchronized JSONObject capture(String reason) {
+        if(paused(this)&&latest!=null)return latest;
         latest = telemetry.sample(this, ++sequence); lastSample = latest.optLong("sampled_at_ms");
         try {
             latest.put("locator_active",FindThor.ringing).put("keep_alive_paused",powerSaving!=null&&powerSaving.suspended);
             latest.put("wake_lock_held", testWakeLock != null && testWakeLock.isHeld());
             latest.put("active_test_remaining_ms", Math.max(0, activeUntil - SystemClock.elapsedRealtime()));
         } catch (Exception ignored) {}
-        try{BatteryHistory.get(this).record(latest);}catch(Exception ignored){}
+        if(!paused(this))try{BatteryHistory.get(this).record(latest);}catch(Exception ignored){}
         Telemetry.log(this, "sample_" + reason, latest);
         return latest;
     }
@@ -158,6 +163,12 @@ public class MonitorService extends Service {
         UUID id=kind.equals("stats")?STATS:kind.equals("hardware")?HARDWARE:kind.equals("live")?LIVE:null;
         if(id==null)throw new IllegalArgumentException("Unknown reading");
         return s.value(id,s.capture("network_read"));
+    }
+    static JSONObject webState()throws Exception {
+        MonitorService s=instance;if(s==null||s.closing||!running)throw new IllegalStateException("Start monitoring on the Thor");
+        synchronized(s){JSONObject sample=s.latest;if(sample==null||System.currentTimeMillis()-s.lastSample>4000)sample=s.capture("web");
+            JSONObject stats=new JSONObject(new String(s.value(STATS,sample),StandardCharsets.UTF_8));stats.put("web_active",WebOps.awake(s)).put("wake_lock_held",s.testWakeLock!=null&&s.testWakeLock.isHeld());stats.put("monitoring_paused",paused(s));stats.put("runtime",BatteryAnalysis.runtime(BatteryHistory.get(s).localSamples(System.currentTimeMillis()-7200000),HostStatsUi.sample(sample)).label);return new JSONObject().put("appearance",HostTheme.name(s)).put("stats",stats).put("hardware",new JSONObject(new String(s.value(HARDWARE,sample),StandardCharsets.UTF_8))).put("activity",s.activity==null?new JSONObject():s.activity.webReply());
+        }
     }
     static byte[] networkControl(byte[] bytes)throws Exception {
         MonitorService s=instance;if(s==null||s.closing||!running)throw new IllegalStateException("Start monitoring on the Thor");
@@ -171,9 +182,9 @@ public class MonitorService extends Service {
         long token=getSharedPreferences("monitor",0).getLong("rest_resume_token",0);if(token>restResumeToken){restResumeToken=token;powerSaving.resume();}
         Boolean closed=null;try{JSONObject a=activity.reply("power");if(!a.isNull("lid"))closed=a.getBoolean("lid");}catch(Exception ignored){}
         boolean pause=powerSaving.evaluate(getSystemService(PowerManager.class).isInteractive(),closed);
-        if(continuous&&!pause){if(!testWakeLock.isHeld())testWakeLock.acquire();}else if(testWakeLock.isHeld())testWakeLock.release();
+        if((continuous||WebOps.awake(this))&&!pause){if(!testWakeLock.isHeld())testWakeLock.acquire();}else if(testWakeLock.isHeld())testWakeLock.release();
         if(wasPaused!=pause){capture("power_policy");notifySubscribers();}
-        getSystemService(NotificationManager.class).notify(1,notification(pause?"Battery saving · keep-alive paused; restore "+PowerSaving.clock(powerSaving.end()):continuous?"Monitoring · CPU keep-alive active":"Passive monitoring · CPU may sleep"));
+        getSystemService(NotificationManager.class).notify(1,notification(paused(this)?"Readings paused · remote controls available":pause?"Battery saving · keep-alive paused; restore "+PowerSaving.clock(powerSaving.end()):WebOps.awake(this)?"Web Ops · active browser":continuous?"Monitoring · CPU keep-alive active":"Passive monitoring · CPU may sleep"));
     }
     static void restChanged(){MonitorService s=instance;if(s!=null&&!s.closing&&s.timer!=null)s.timer.execute(()->s.evaluatePower());}
     static void restPower(int action){MonitorService s=instance;if(s==null||s.powerSaving==null)throw new IllegalStateException("Start monitoring first");synchronized(s){if(action==4)s.powerSaving.manual();else s.powerSaving.resume();s.evaluatePower();}}
@@ -250,7 +261,7 @@ public class MonitorService extends Service {
         JSONObject result = new JSONObject();
         try {
             if (id.equals(STATS)) {
-                String[][] keys = {{"keep_alive_paused","keep_alive_paused"},{"locator_active","locator_active"},{"full_uah","full_charge_uah"},{"design_uah","design_charge_uah"},{"cycles","cycle_count"},{"health","battery_health_code"},{"seq","sequence"},{"ts_ms","sampled_at_ms"},{"battery_pct","battery_percent"},
+                String[][] keys = {{"we","wifi_event"},{"keep_alive_paused","keep_alive_paused"},{"locator_active","locator_active"},{"full_uah","full_charge_uah"},{"design_uah","design_charge_uah"},{"cycles","cycle_count"},{"health","battery_health_code"},{"seq","sequence"},{"ts_ms","sampled_at_ms"},{"battery_pct","battery_percent"},
                     {"temp_c","battery_temperature_c"},{"voltage_mv","battery_voltage_mv"},{"current_ua_raw","current_ua_raw"},
                     {"charge_uah","charge_counter_uah"},{"status_code","battery_status_code"},{"plugged_code","plugged_code"},
                     {"interactive","interactive"},{"idle","device_idle"},{"free_bytes","data_available_bytes"},
@@ -264,6 +275,8 @@ public class MonitorService extends Service {
                     result.put(key, j.opt(key));
             }
         } catch (Exception ignored) {}
+        // Keep optional health metadata from overflowing a Bluetooth attribute.
+        if(id.equals(STATS))for(String key:new String[]{"design_uah","full_uah","cycles","health"})if(result.toString().getBytes(StandardCharsets.UTF_8).length>512)result.remove(key);
         return result.toString().getBytes(StandardCharsets.UTF_8);
     }
 
@@ -478,7 +491,7 @@ public class MonitorService extends Service {
     @Override public void onDestroy() {
         closing = true;
         if(instance==this)instance=null;
-        FindThor.stopNow();RecordingBroker.stopCurrentAsync(this);FileAccess.stop();if(ServiceRecovery.wanted(this))ServiceRecovery.schedule(this);else ServiceRecovery.cancel(this);
+        WebOps.stop();FindThor.stopNow();RecordingBroker.stopCurrentAsync(this);FileAccess.stop();if(ServiceRecovery.wanted(this))ServiceRecovery.schedule(this);else ServiceRecovery.cancel(this);
         resetNotifications();
         running = false;
         timeoutHandler.removeCallbacks(testTimeout);

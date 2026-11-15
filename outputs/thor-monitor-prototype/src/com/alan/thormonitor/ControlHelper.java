@@ -41,9 +41,14 @@ public final class ControlHelper {
                     if(socket.getPeerCredentials().getUid()!=owner) continue;
                     DataInputStream in=new DataInputStream(socket.getInputStream());
                     int length=in.readUnsignedShort();
-                    if(length>180) continue;
+                    if(length>4096) continue;
                     byte[] bytes=new byte[length];in.readFully(bytes);
                     JSONObject j=new JSONObject(new String(bytes,StandardCharsets.UTF_8));
+                    if(length>180&&!j.optString("set").startsWith("wifi_"))continue;
+                    if(j.optString("set").startsWith("wifi_")&&!j.optString("set").equals("wifi_identity")) {
+                        JSONObject result;try{result=WifiControls.command(j);}catch(Exception e){result=new JSONObject().put("ok",false).put("error",e instanceof IllegalArgumentException||e instanceof IllegalStateException?e.getMessage():"Wi-Fi action unavailable. Check Controls recovery.");}
+                        byte[] reply=result.toString().getBytes(StandardCharsets.UTF_8);DataOutputStream out=new DataOutputStream(socket.getOutputStream());out.writeShort(reply.length);out.write(reply);out.flush();continue;
+                    }
                     if("app_tasks".equals(j.optString("set"))){JSONObject result;try{result=new JSONObject().put("ok",true).put("tasks",AppActions.tasks());}catch(Exception e){result=new JSONObject().put("ok",false);}byte[] bytesOut=result.toString().getBytes(StandardCharsets.UTF_8);DataOutputStream reply=new DataOutputStream(socket.getOutputStream());reply.writeShort(bytesOut.length);reply.write(bytesOut);reply.flush();continue;}
                     if(j.optString("set").startsWith("record_")) {
                         String action=j.getString("set");DataOutputStream out=new DataOutputStream(socket.getOutputStream());
@@ -108,7 +113,7 @@ public final class ControlHelper {
                             write(key,command.equals("led")?(value==1?"1,1":"0,0"):String.valueOf(value));
                         }
                     } catch(Exception e) { error="Thor system control failed"; }
-                    byte[] response=new JSONObject().put("ok",error.isEmpty()).put("error",error).put("capture",true).put("protocol",9).toString().getBytes(StandardCharsets.UTF_8);
+                    byte[] response=new JSONObject().put("ok",error.isEmpty()).put("error",error).put("capture",true).put("protocol",10).toString().getBytes(StandardCharsets.UTF_8);
                     DataOutputStream out=new DataOutputStream(socket.getOutputStream());out.writeShort(response.length);out.write(response);out.flush();
                 } catch(Exception ignored) { /* Invalid clients cannot terminate the helper. */ }
             }

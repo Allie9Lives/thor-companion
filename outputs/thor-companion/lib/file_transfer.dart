@@ -19,6 +19,7 @@ class FileConnection {
     required this.token,
     required this.name,
     this.preferredHost,
+    this.manualHost,
   });
   factory FileConnection.fromMap(Map<String, dynamic> j) {
     final hosts = (j['hosts'] as List).cast<String>();
@@ -41,6 +42,9 @@ class FileConnection {
       pin: pin,
       token: token,
       name: j['name'] as String? ?? 'AYN Thor',
+      manualHost: j['manualHost'] is String && validHost(j['manualHost'])
+          ? j['manualHost'] as String
+          : null,
       preferredHost:
           j['preferredHost'] is String &&
               validHost(j['preferredHost'] as String)
@@ -56,8 +60,23 @@ class FileConnection {
   final List<String> hosts;
   final int port;
   final String pin, token, name;
-  final String? preferredHost;
-  String get defaultHost => preferredHost ?? (hosts.isEmpty ? '' : hosts.first);
+  final String? preferredHost, manualHost;
+  List<String> get candidateHosts =>
+      {?manualHost, ?preferredHost, ...hosts}.toList();
+  String get defaultHost =>
+      manualHost ?? preferredHost ?? (hosts.isEmpty ? '' : hosts.first);
+  FileConnection retainingAddresses(FileConnection? previous) => FileConnection(
+    hosts: {
+      ...hosts,
+      if (previous?.pin == pin) ...previous!.hosts,
+    }.take(16).toList(),
+    port: port,
+    pin: pin,
+    token: token,
+    name: name,
+    preferredHost: preferredHost,
+    manualHost: manualHost,
+  );
   FileConnection usingHost(String host) => FileConnection(
     hosts: hosts,
     port: port,
@@ -65,6 +84,16 @@ class FileConnection {
     token: token,
     name: name,
     preferredHost: host,
+    manualHost: manualHost,
+  );
+  FileConnection withManualHost(String? host) => FileConnection(
+    hosts: hosts,
+    port: port,
+    pin: pin,
+    token: token,
+    name: name,
+    preferredHost: preferredHost,
+    manualHost: host,
   );
   Map<String, dynamic> toMap() => {
     'hosts': hosts,
@@ -73,6 +102,7 @@ class FileConnection {
     'token': token,
     'name': name,
     if (preferredHost != null) 'preferredHost': preferredHost,
+    if (manualHost != null) 'manualHost': manualHost,
   };
 }
 

@@ -135,9 +135,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
                       () => widget.onAction('widgets'),
                     ),
                   (
-                    'Battery notifications',
+                    'Notifications',
                     Icons.notifications_outlined,
-                    'Alerts & thresholds',
+                    'Battery & connections',
                     () => widget.onAction('alerts'),
                   ),
                   (
@@ -145,6 +145,12 @@ class _SettingsSheetState extends State<SettingsSheet> {
                     Icons.insights_outlined,
                     'History & runtime',
                     () => widget.onAction('insights'),
+                  ),
+                  (
+                    'Wi-Fi',
+                    Icons.wifi,
+                    'Networks & following',
+                    () => widget.onAction('wifi'),
                   ),
                   (
                     'Files',

@@ -1,0 +1,14 @@
+Thor Web Ops · Copyright Allie Stark (Allie9Lives)
+https://github.com/Allie9Lives/thor-companion
+
+Mediabunny 1.66.0 · Mozilla Public License 2.0
+Copyright Vanilagy and contributors. Used unmodified.
+License: /vendor/MEDIABUNNY-LICENSE.txt
+Corresponding source: /vendor/mediabunny-source.tgz
+https://github.com/Vanilagy/mediabunny
+
+ZXing 3.5.3 · Apache License 2.0
+https://github.com/zxing/zxing
+Its license is included with Thor Monitor third-party notices.
+
+Thor Companion restrictions do not replace the licenses of these third-party components.

@@ -11,6 +11,8 @@ import 'ftp_page.dart';
 import 'apps_page.dart';
 import 'connection_health_page.dart';
 import 'battery_pages.dart';
+import 'web_ops_page.dart';
+import 'quick_controls.dart';
 
 class ThorControlState {
   ThorControlState.fromBytes(List<int> bytes) : values = decodeObject(bytes) {
@@ -236,11 +238,12 @@ class _ControlsPageState extends State<ControlsPage> {
                                     'Open files',
                                     'App drawer',
                                     'FTP server',
+                                    'Web Ops',
                                     'Open keyboard',
                                     'Screen capture',
                                     'Connection health',
                                     'Battery insights',
-                                  ].indexOf(label).clamp(0, 7) %
+                                  ].indexOf(label).clamp(0, 8) %
                                   4]
                             : null,
                       ),
@@ -282,6 +285,11 @@ class _ControlsPageState extends State<ControlsPage> {
                         () => _openTool(FtpServerPage(controller: c)),
                       ),
                       tool(
+                        'Web Ops',
+                        Icons.web_outlined,
+                        () => _openTool(WebOpsPage(controller: c)),
+                      ),
+                      tool(
                         'Open keyboard',
                         Icons.keyboard_outlined,
                         () => _openTool(RemoteKeyboardPage(controller: c)),
@@ -313,6 +321,14 @@ class _ControlsPageState extends State<ControlsPage> {
           surface(
             child: const Text(
               'Connect to an updated Thor Monitor to load its controls.',
+            ),
+          ),
+          const SizedBox(height: 12),
+          surface(
+            child: QuickControls(
+              values: const {},
+              enabled: false,
+              onSet: (_, _) {},
             ),
           ),
           const SizedBox(height: 12),
@@ -395,49 +411,14 @@ class _ControlsPageState extends State<ControlsPage> {
           ),
           const SizedBox(height: 12),
           surface(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                choice('Refresh rate', 'hz', c.controlNumber('hz'), const {
-                  60: '60 Hz',
-                  120: '120 Hz',
-                }),
-                const SizedBox(height: 16),
-                choice('Fan', 'fan', c.controlNumber('fan'), const {
-                  0: 'Off',
-                  1: 'Quiet',
-                  4: 'Smart',
-                  5: 'Sports',
-                }),
-                choice(
-                  'Performance',
-                  'performance',
-                  c.controlNumber('performance'),
-                  const {
-                    0: 'Standard',
-                    1: 'Performance',
-                    2: 'High performance',
-                  },
-                ),
-                choice('Input focus', 'focus', c.controlNumber('focus'), const {
-                  0: 'Automatic',
-                  1: 'Top screen',
-                  2: 'Bottom screen',
-                }),
-                toggle(
-                  'Direct power supply',
-                  'bypass',
-                  c.controlNumber('bypass'),
-                ),
-                toggle('Vibration', 'vibration', c.controlNumber('vibration')),
-                toggle('Ambient LEDs', 'led', c.controlNumber('led')),
-                choice(
-                  'Controller layout',
-                  'style',
-                  c.controlNumber('style'),
-                  const {1: 'Standard', 0: 'Xbox', 2: 'Disabled'},
-                ),
-              ],
+            child: QuickControls(
+              values: {
+                ...state.values,
+                for (final setting in QuickControls.settings)
+                  setting.$2: c.controlNumber(setting.$2),
+              },
+              enabled: enabled && state.settingsAllowed,
+              onSet: (key, value) => unawaited(c.setControl(key, value)),
             ),
           ),
           const SizedBox(height: 12),
@@ -564,19 +545,6 @@ class _ControlsPageState extends State<ControlsPage> {
             ),
             const SizedBox(height: 12),
           ],
-          FilledButton.tonal(
-            onPressed: enabled && state.settingsAllowed
-                ? () => c.setControl('clean', 0)
-                : null,
-            child: const Text('Clean background apps'),
-          ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
-            child: Text(
-              'Clears cached background apps.',
-              style: TextStyle(fontSize: 14),
-            ),
-          ),
           OutlinedButton(
             onPressed: enabled ? c.refresh : null,
             child: const Text('Refresh controls'),
@@ -619,37 +587,6 @@ class _ControlsPageState extends State<ControlsPage> {
       },
     );
   }
-
-  Widget choice(
-    String label,
-    String key,
-    int? value,
-    Map<int, String> options,
-  ) => Padding(
-    padding: const EdgeInsets.only(bottom: 16),
-    child: DropdownButtonFormField<int>(
-      key: ValueKey('$key-$value'),
-      initialValue: options.containsKey(value) ? value : null,
-      isExpanded: true,
-      decoration: InputDecoration(labelText: label),
-      items: options.entries
-          .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
-          .toList(),
-      onChanged: enabled && c.controls!.settingsAllowed
-          ? (v) {
-              if (v != null) unawaited(c.setControl(key, v));
-            }
-          : null,
-    ),
-  );
-  Widget toggle(String label, String key, int? value) => SwitchListTile(
-    contentPadding: EdgeInsets.zero,
-    title: Text(label),
-    value: value == 1,
-    onChanged: enabled && c.controls!.settingsAllowed && value != null
-        ? (v) => c.setControl(key, v ? 1 : 0)
-        : null,
-  );
 }
 
 class _ControlSlider extends StatelessWidget {

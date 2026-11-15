@@ -28,8 +28,9 @@ final class FileAccess {
  private static JSONObject status(Context c)throws Exception{return new JSONObject().put("version",c.getPackageManager().getPackageInfo(c.getPackageName(),0).versionName).put("monitoring",MonitorService.running).put("wifi",wifiConnected(c)).put("helper",new ThorControls(c).helperReady()).put("capture",true).put("recording",new ThorControls(c).helperReady()).put("adaptive_control",1).put("recovery_enabled",Recovery.enabled(c)).put("recovery_paired",Recovery.paired(c)).put("recovery_permission",Recovery.permitted(c)).put("recovery_status",Recovery.state).put("file_access",enabled(c)).put("overlay_permission",LocatorStopPanel.allowed(c));}
  private static final Set<Socket> active=ConcurrentHashMap.newKeySet();
  static boolean enabled(Context c){return c.getSharedPreferences("monitor",0).getBoolean("files_enabled",false);}
+ static boolean iconsEnabled(Context c){return c.getSharedPreferences("monitor",0).getBoolean("icons_enabled",false);}
  static String folder(Context c,String root){return c.getSharedPreferences("monitor",0).getString("files_"+root,"");}
- static synchronized void revoke(Context c){stop();c.getSharedPreferences("monitor",0).edit().putBoolean("files_enabled",false).remove("files_token").apply();}
+ static synchronized void revoke(Context c){stop();c.getSharedPreferences("monitor",0).edit().putBoolean("files_enabled",false).putBoolean("icons_enabled",false).remove("files_token").remove("icons_token").apply();}
  static void choose(Context c,String root,Uri uri,int flags){
   if(!root.equals("internal")&&!root.equals("sd"))throw new IllegalArgumentException();
   c.getContentResolver().takePersistableUriPermission(uri,flags&(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION));
@@ -37,18 +38,18 @@ final class FileAccess {
   if(!old.isEmpty()&&!old.equals(uri.toString())&&!old.equals(folder(c,root.equals("sd")?"internal":"sd")))try{c.getContentResolver().releasePersistableUriPermission(Uri.parse(old),Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION);}catch(Exception ignored){}
  }
  static synchronized void set(Context c,boolean on)throws Exception{
-  c.getSharedPreferences("monitor",0).edit().putBoolean("files_enabled",on).apply();if(on)start(c);else stop();
+  c.getSharedPreferences("monitor",0).edit().putBoolean("files_enabled",on).apply();if(on)start(c);else{stop();if(iconsEnabled(c))start(c);}
  }
  static synchronized void stop(){FtpAccess.stop();for(Socket client:active)try{client.close();}catch(Exception ignored){}active.clear();if(server!=null)try{server.close();}catch(Exception ignored){}server=null;if(acceptor!=null)acceptor.shutdownNow();if(workers!=null)workers.shutdownNow();}
  static synchronized void start(Context c)throws Exception{
+  if(!enabled(c)&&!iconsEnabled(c))return;
+  android.content.SharedPreferences prefs=c.getSharedPreferences("monitor",0);
+  for(String role:new String[]{"files","icons"})if((role.equals("files")?enabled(c):iconsEnabled(c))&&!prefs.contains(role+"_token")){byte[] token=new byte[32];new SecureRandom().nextBytes(token);prefs.edit().putString(role+"_token",hex(token)).commit();}
   if(server!=null&&!server.isClosed())return;
-  if(!enabled(c))return;
   app=c.getApplicationContext();
   SSLContext tls=tlsContext(c);
   SSLServerSocket socket=(SSLServerSocket)tls.getServerSocketFactory().createServerSocket();socket.setReuseAddress(true);socket.bind(new InetSocketAddress(PORT));socket.setEnabledProtocols(new String[]{"TLSv1.2"});
   server=socket;
-  android.content.SharedPreferences prefs=app.getSharedPreferences("monitor",0);
-  if(!prefs.contains("files_token")){byte[] token=new byte[32];new SecureRandom().nextBytes(token);prefs.edit().putString("files_token",hex(token)).commit();}
   workers=new ThreadPoolExecutor(2,2,30,TimeUnit.SECONDS,new ArrayBlockingQueue<Runnable>(4),new ThreadPoolExecutor.AbortPolicy());
   acceptor=Executors.newSingleThreadExecutor();acceptor.execute(()->{while(!socket.isClosed()){try{SSLSocket client=(SSLSocket)socket.accept();client.setSoTimeout(15000);active.add(client);try{workers.execute(()->serve(client));}catch(Exception e){active.remove(client);client.close();}}catch(Exception e){if(socket.isClosed())break;}}});
  }
@@ -81,6 +82,11 @@ final class FileAccess {
  static synchronized JSONObject session(Context c,String id)throws Exception{
   set(c,true);return credentials(c,id);
  }
+ static synchronized JSONObject iconSession(Context c,String id)throws Exception{
+  c.getSharedPreferences("monitor",0).edit().putBoolean("icons_enabled",true).commit();start(c);
+  return credentials(c,id).put("token",c.getSharedPreferences("monitor",0).getString("icons_token","")).put("icons",true).put("files",false);
+ }
+ private static boolean matchesToken(String stored,String supplied){return !stored.isEmpty()&&MessageDigest.isEqual(("Bearer "+stored).getBytes(java.nio.charset.StandardCharsets.UTF_8),supplied.getBytes(java.nio.charset.StandardCharsets.UTF_8));}
  private static JSONObject credentials(Context c,String id)throws Exception{
   JSONArray hosts=new JSONArray();
   Enumeration<NetworkInterface> interfaces=NetworkInterface.getNetworkInterfaces();
@@ -115,10 +121,12 @@ final class FileAccess {
    SSLSocket client=socket;client.startHandshake();InputStream in=new BufferedInputStream(client.getInputStream());out=new ResponseOutput(client.getOutputStream());
    String[] request=line(in,8192).split(" ");if(request.length!=3||!request[2].equals("HTTP/1.1"))throw new IllegalArgumentException("Invalid request");
    Map<String,String> headers=new HashMap<>();int total=0;while(true){String h=line(in,8192);total+=h.length();if(total>16384)throw new IllegalArgumentException("Headers too large");if(h.isEmpty())break;int split=h.indexOf(':');if(split<1)throw new IllegalArgumentException();String name=h.substring(0,split).toLowerCase(Locale.ROOT);if(headers.put(name,h.substring(split+1).trim())!=null)throw new IllegalArgumentException("Duplicate header");}
-   String expected="Bearer "+app.getSharedPreferences("monitor",0).getString("files_token","");
-   if(!enabled(app)||!MessageDigest.isEqual(expected.getBytes("UTF-8"),headers.getOrDefault("authorization","").getBytes("UTF-8"))){json(out,401,new JSONObject().put("error","Authorize file access from the paired companion"));return;}
    if(headers.containsKey("transfer-encoding")||headers.containsKey("origin"))throw new IllegalArgumentException("Unsupported request");
    URI url=new URI(request[1]);Map<String,String> q=query(url.getRawQuery());String route=url.getPath(),method=request[0];
+   String supplied=headers.getOrDefault("authorization","");android.content.SharedPreferences auth=app.getSharedPreferences("monitor",0);
+   boolean full=enabled(app)&&matchesToken(auth.getString("files_token",""),supplied);
+   boolean icons=iconsEnabled(app)&&matchesToken(auth.getString("icons_token",""),supplied);
+   if(!full&&!(icons&&method.equals("GET")&&(route.equals("/v1/status")||route.equals("/v1/app-icon")))){json(out,icons?403:401,new JSONObject().put("error",icons?"App images only":"Link access from the paired companion"));return;}
    wake=app.getSystemService(android.os.PowerManager.class).newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK,"ThorMonitor:Files");wake.acquire(30*60*1000L);
    if(method.equals("GET")&&route.equals("/v1/status")){json(out,200,status(app));return;}
    if(method.equals("GET")&&route.equals("/v1/link/read")){

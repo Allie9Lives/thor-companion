@@ -6,6 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'ble_transport.dart';
 import 'companion_controller.dart';
 import 'network_link.dart';
+import 'wifi_page.dart';
 import 'ui.dart';
 
 class ConnectionHealthPage extends StatefulWidget {
@@ -72,6 +73,8 @@ class _ConnectionHealthPageState extends State<ConnectionHealthPage> {
           RadioState.unavailable => 'Unavailable',
           _ => 'Starting',
         },
+        if (c.adaptive?.knownNetworkHosts.isNotEmpty == true)
+          'Saved network addresses': c.adaptive!.knownNetworkHosts.join(' · '),
         'Control route': c.adaptive?.routeLabel ?? 'Bluetooth',
         'Bluetooth link': c.adaptive == null
             ? c.phase.name
@@ -134,6 +137,16 @@ class _ConnectionHealthPageState extends State<ConnectionHealthPage> {
         body: ListView(
           padding: const EdgeInsets.all(20),
           children: [
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => WifiPage(controller: c),
+                ),
+              ),
+              icon: const Icon(Icons.wifi),
+              label: const Text('Thor Wi-Fi'),
+            ),
+            const SizedBox(height: 12),
             surface(
               copyText: report,
               copyLabel: 'Connection health',
@@ -201,7 +214,7 @@ class _ConnectionHealthPageState extends State<ConnectionHealthPage> {
               ),
               const SizedBox(height: 16),
             ],
-            NetworkConnectionCard(link: n),
+            NetworkConnectionCard(link: n, showAdvanced: true),
             const SizedBox(height: 16),
             surface(
               child: Column(

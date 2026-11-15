@@ -13,6 +13,11 @@ class BatteryAlertOptions {
     this.plugged = true,
     this.unplugged = true,
     this.closedLid = false,
+    this.wifiChanged = false,
+    this.wifiLost = false,
+    this.wifiSignIn = false,
+    this.bluetoothLost = false,
+    this.bluetoothBack = false,
   });
   factory BatteryAlertOptions.fromMap(Map<String, dynamic> j) =>
       BatteryAlertOptions(
@@ -23,8 +28,14 @@ class BatteryAlertOptions {
         plugged: j['plugged'] != false,
         unplugged: j['unplugged'] != false,
         closedLid: j['closedLid'] == true,
+        wifiChanged: j['wifiChanged'] == true,
+        wifiLost: j['wifiLost'] == true,
+        wifiSignIn: j['wifiSignIn'] == true,
+        bluetoothLost: j['bluetoothLost'] == true,
+        bluetoothBack: j['bluetoothBack'] == true,
       );
   bool enabled, low10, low20, charged80, plugged, unplugged, closedLid;
+  bool wifiChanged, wifiLost, wifiSignIn, bluetoothLost, bluetoothBack;
   Map<String, bool> toMap() => {
     'enabled': enabled,
     'low10': low10,
@@ -33,6 +44,11 @@ class BatteryAlertOptions {
     'plugged': plugged,
     'unplugged': unplugged,
     'closedLid': closedLid,
+    'wifiChanged': wifiChanged,
+    'wifiLost': wifiLost,
+    'wifiSignIn': wifiSignIn,
+    'bluetoothLost': bluetoothLost,
+    'bluetoothBack': bluetoothBack,
   };
 }
 

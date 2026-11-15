@@ -14,3 +14,6 @@ The original SPAKE2 Java and native source archives are provided under source/, 
 ## Desktop FTP support
 
 Apache FtpServer 1.2.1 (ftpserver-core and ftplet-api) and Apache MINA 2.2.10 are distributed under Apache License 2.0. Their LICENSE and NOTICE files are included beside the libraries and packaged with the app. SLF4J API and NOP 1.7.36 use the MIT license in LICENSE-SLF4J.txt. Logging is disabled for this embedded server; credentials are never written to diagnostics.
+
+- ZXing Core 3.5.3 — ZXing contributors, Apache-2.0; used for Web Ops QR addresses. https://github.com/zxing/zxing/tree/zxing-3.5.3
+- Mediabunny 1.66.0 — Vanilagy and contributors, MPL-2.0; used unmodified for browser video export. License and corresponding source are bundled under assets/web-ops/vendor/. https://github.com/Vanilagy/mediabunny

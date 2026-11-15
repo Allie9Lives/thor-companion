@@ -15,8 +15,10 @@ import 'about_page.dart';
 import 'battery_pages.dart';
 import 'files_page.dart';
 import 'connection_health_page.dart';
+import 'wifi_page.dart';
 import 'pairing_recovery.dart';
 import 'design_components.dart';
+import 'app_theme_icon.dart';
 
 void main() => runApp(ThorCompanionApp());
 
@@ -34,18 +36,27 @@ class ThorCompanionApp extends StatefulWidget {
   State<ThorCompanionApp> createState() => _ThorCompanionAppState();
 }
 
-class _ThorCompanionAppState extends State<ThorCompanionApp> {
+class _ThorCompanionAppState extends State<ThorCompanionApp>
+    with WidgetsBindingObserver {
   late CompanionController controller;
   AppAppearance appearance = AppAppearance.system;
+  bool appearanceReady = false;
+  int appearanceRevision = 0;
   bool get ownsController => widget.controller == null;
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) => syncIcon());
     controller = widget.controller ?? createController();
     appearance =
         widget.initialAppearance ??
         appearanceFromName(widget.initialThemeMode.name);
-    if (ownsController) unawaited(loadAppearance());
+    if (ownsController) {
+      unawaited(loadAppearance());
+    } else {
+      appearanceReady = true;
+    }
     if (ownsController &&
         !kIsWeb &&
         defaultTargetPlatform == TargetPlatform.iOS) {
@@ -64,16 +75,46 @@ class _ThorCompanionAppState extends State<ThorCompanionApp> {
   }
 
   Future<void> loadAppearance() async {
+    final revision = appearanceRevision;
     try {
       final saved = await SharedPreferencesAsync().getString('appearance');
-      if (!mounted || saved == null) return;
+      if (!mounted || saved == null || revision != appearanceRevision) return;
       setState(() => appearance = appearanceFromName(saved));
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      appearanceReady = true;
+      syncIcon();
+    }
   }
 
   void setAppearance(AppAppearance mode) {
+    appearanceReady = true;
+    appearanceRevision++;
     setState(() => appearance = mode);
+    syncIcon();
     if (ownsController) unawaited(saveAppearance(mode));
+  }
+
+  void syncIcon() {
+    if (mounted &&
+        appearanceReady &&
+        ownsController &&
+        !controller.isDemo &&
+        !kIsWeb) {
+      unawaited(
+        AppThemeIcon.sync(
+          appearance,
+          WidgetsBinding.instance.platformDispatcher.platformBrightness,
+        ),
+      );
+    }
+  }
+
+  @override
+  void didChangePlatformBrightness() => syncIcon();
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) syncIcon();
   }
 
   Future<void> saveAppearance(AppAppearance mode) async {
@@ -99,6 +140,7 @@ class _ThorCompanionAppState extends State<ThorCompanionApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     if (ownsController) controller.dispose();
     super.dispose();
   }
@@ -230,150 +272,173 @@ class _CompanionHomeState extends State<CompanionHome>
             constraints: BoxConstraints(maxWidth: 620),
             child: RefreshIndicator(
               onRefresh: c.refresh,
-              child: ListView(
+              child: CustomScrollView(
                 key: PageStorageKey(
                   c.stats == null ? 'setup-scroll' : 'tab-scroll-$tab',
-                ),
-                padding: EdgeInsets.fromLTRB(
-                  MediaQuery.sizeOf(context).width < 370 ? 18 : 22,
-                  18,
-                  MediaQuery.sizeOf(context).width < 370 ? 18 : 22,
-                  28,
                 ),
                 physics: const AlwaysScrollableScrollPhysics(
                   parent: BouncingScrollPhysics(),
                 ),
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 38,
-                        height: 38,
-                        decoration: BoxDecoration(
-                          color: accent,
-                          borderRadius: BorderRadius.circular(13),
-                        ),
-                        child: Center(
-                          child: SizedBox(
-                            width: 25,
-                            height: 25,
-                            child: CustomPaint(
-                              painter: HandheldPainter(color: onAccent),
-                            ),
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Thor Companion',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: -.25,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Appearance and settings',
-                        onPressed: settings,
-                        style: IconButton.styleFrom(
-                          backgroundColor: AppPalette.of(context).card,
-                          side: BorderSide(
-                            color: AppPalette.of(context).border,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                        icon: Icon(
-                          Icons.settings_outlined,
-                          color: secondaryText,
-                          size: 23,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (AppPalette.of(context).isRainbow) ...[
-                    const SizedBox(height: 14),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(2),
-                      child: Row(
-                        children: AppPalette.of(context).rainbowColors
-                            .map(
-                              (color) => Expanded(
-                                child: Container(height: 3, color: color),
+                slivers: [
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(
+                      MediaQuery.sizeOf(context).width < 370 ? 18 : 22,
+                      18,
+                      MediaQuery.sizeOf(context).width < 370 ? 18 : 22,
+                      28,
+                    ),
+                    sliver: SliverToBoxAdapter(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                width: 38,
+                                height: 38,
+                                decoration: BoxDecoration(
+                                  color: accent,
+                                  borderRadius: BorderRadius.circular(13),
+                                ),
+                                child: Center(
+                                  child: SizedBox(
+                                    width: 25,
+                                    height: 25,
+                                    child: CustomPaint(
+                                      painter: HandheldPainter(color: onAccent),
+                                    ),
+                                  ),
+                                ),
                               ),
-                            )
-                            .toList(),
+                              SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  'Thor Companion',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: -.25,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Appearance and settings',
+                                onPressed: settings,
+                                style: IconButton.styleFrom(
+                                  backgroundColor: AppPalette.of(context).card,
+                                  side: BorderSide(
+                                    color: AppPalette.of(context).border,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                ),
+                                icon: Icon(
+                                  Icons.settings_outlined,
+                                  color: secondaryText,
+                                  size: 23,
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (AppPalette.of(context).isRainbow) ...[
+                            const SizedBox(height: 14),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(2),
+                              child: Row(
+                                children: AppPalette.of(context).rainbowColors
+                                    .map(
+                                      (color) => Expanded(
+                                        child: Container(
+                                          height: 3,
+                                          color: color,
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                              ),
+                            ),
+                          ],
+                          if (c.isDemo) ...[
+                            SizedBox(height: 18),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.science_outlined,
+                                  size: 18,
+                                  color: secondaryText,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Demo data',
+                                  style: TextStyle(
+                                    color: secondaryText,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                const Spacer(),
+                                if (widget.onExitDemo != null)
+                                  TextButton(
+                                    onPressed: widget.onExitDemo,
+                                    child: const Text('Exit'),
+                                  ),
+                              ],
+                            ),
+                          ],
+                          if (c.error != null) ...[
+                            SizedBox(height: 18),
+                            notice(
+                              c.hostAuthorizationRequired
+                                  ? 'Phone approval needed'
+                                  : c.pairingRecoveryRequired
+                                  ? 'Pairing needs repair'
+                                  : 'Connection',
+                              c.error!,
+                              warning: true,
+                              trailing: c.pairingRecoveryRequired
+                                  ? TextButton(
+                                      onPressed: repairPairing,
+                                      child: const Text('Fix connection'),
+                                    )
+                                  : null,
+                            ),
+                          ],
+                          if (c.retryAt != null) ...[
+                            SizedBox(height: 12),
+                            notice(
+                              'Reconnecting',
+                              'Retrying in ${c.retryAt!.difference(DateTime.now()).inSeconds.clamp(0, 60)} s.',
+                            ),
+                          ],
+                          SizedBox(height: 26),
+                          TweenAnimationBuilder<double>(
+                            key: ValueKey(
+                              c.stats == null ? 'setup' : 'tab-$tab',
+                            ),
+                            tween: Tween(begin: 0, end: 1),
+                            duration: MediaQuery.disableAnimationsOf(context)
+                                ? Duration.zero
+                                : const Duration(milliseconds: 300),
+                            curve: thorCurve,
+                            builder: (context, opacity, child) =>
+                                Transform.translate(
+                                  offset: Offset(0, 10 * (1 - opacity)),
+                                  child: Opacity(
+                                    opacity: opacity,
+                                    child: child,
+                                  ),
+                                ),
+                            child: c.stats == null
+                                ? setup()
+                                : tab == 0
+                                ? Dashboard(controller: c)
+                                : tab == 1
+                                ? DevicePage(controller: c)
+                                : ControlsPage(controller: c),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-                  if (c.isDemo) ...[
-                    SizedBox(height: 18),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.science_outlined,
-                          size: 18,
-                          color: secondaryText,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Demo data',
-                          style: TextStyle(color: secondaryText, fontSize: 14),
-                        ),
-                        const Spacer(),
-                        if (widget.onExitDemo != null)
-                          TextButton(
-                            onPressed: widget.onExitDemo,
-                            child: const Text('Exit'),
-                          ),
-                      ],
-                    ),
-                  ],
-                  if (c.error != null) ...[
-                    SizedBox(height: 18),
-                    notice(
-                      c.pairingRecoveryRequired
-                          ? 'Pairing needs repair'
-                          : 'Connection',
-                      c.error!,
-                      warning: true,
-                      trailing: c.pairingRecoveryRequired
-                          ? TextButton(
-                              onPressed: repairPairing,
-                              child: const Text('Fix connection'),
-                            )
-                          : null,
-                    ),
-                  ],
-                  if (c.retryAt != null) ...[
-                    SizedBox(height: 12),
-                    notice(
-                      'Reconnecting',
-                      'Retrying in ${c.retryAt!.difference(DateTime.now()).inSeconds.clamp(0, 60)} s.',
-                    ),
-                  ],
-                  SizedBox(height: 26),
-                  TweenAnimationBuilder<double>(
-                    key: ValueKey(c.stats == null ? 'setup' : 'tab-$tab'),
-                    tween: Tween(begin: 0, end: 1),
-                    duration: MediaQuery.disableAnimationsOf(context)
-                        ? Duration.zero
-                        : const Duration(milliseconds: 300),
-                    curve: thorCurve,
-                    builder: (context, opacity, child) => Transform.translate(
-                      offset: Offset(0, 10 * (1 - opacity)),
-                      child: Opacity(opacity: opacity, child: child),
-                    ),
-                    child: c.stats == null
-                        ? setup()
-                        : tab == 0
-                        ? Dashboard(controller: c)
-                        : tab == 1
-                        ? DevicePage(controller: c)
-                        : ControlsPage(controller: c),
                   ),
                 ],
               ),
@@ -385,9 +450,17 @@ class _CompanionHomeState extends State<CompanionHome>
   );
 
   Future<void> repairPairing() async {
-    if (!await showPairingRecovery(context) || !mounted) return;
+    final hostApproval = c.hostAuthorizationRequired;
+    if (!await showPairingRecovery(context, hostAuthorization: hostApproval) ||
+        !mounted) {
+      return;
+    }
     setState(() => tab = 0);
-    await c.scanAfterPairingReset();
+    if (hostApproval) {
+      await c.retryPhoneAuthorization();
+    } else {
+      await c.scanAfterPairingReset();
+    }
   }
 
   Widget setup() => Column(
@@ -640,6 +713,12 @@ class _CompanionHomeState extends State<CompanionHome>
               Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) => FilesPage(controller: c),
+                ),
+              );
+            case 'wifi':
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => WifiPage(controller: c),
                 ),
               );
             case 'alerts':

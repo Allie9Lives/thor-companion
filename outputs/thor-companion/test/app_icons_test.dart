@@ -18,10 +18,11 @@ class IconsServer extends ThorFiles {
         '192.0.2.1',
       );
   int calls = 0;
-  bool missing = false;
+  bool missing = false, broken = false;
   @override
   Future<Uint8List> appIcon(String package, String revision) async {
     calls++;
+    if (broken) throw const SocketException('link changed');
     if (missing) throw const AppIconUnavailable();
     return base64Decode(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=',
@@ -74,4 +75,51 @@ void main() {
     expect(AppIconCache.validPng(Uint8List(32)), false);
     cache.close();
   });
+  test(
+    'a missing network link retries and restores the same icon without a page refresh',
+    () async {
+      final server = IconsServer();
+      var linked = false, calls = 0;
+      final cache = AppIconCache(
+        'retry',
+        directory: () async => null,
+        retryDelay: const Duration(milliseconds: 10),
+        network: () async {
+          calls++;
+          return linked ? server : null;
+        },
+      );
+      var notified = false;
+      cache.addListener(() => notified = true);
+      expect(await cache.get('com.test.app', 'a' * 16), isNull);
+      linked = true;
+      await Future<void>.delayed(const Duration(milliseconds: 25));
+      expect(notified, true);
+      expect(await cache.get('com.test.app', 'a' * 16), isNotNull);
+      expect(calls, 2);
+      cache.close();
+    },
+  );
+  test(
+    'rotated credentials replace a failed transport without discarding cached successes',
+    () async {
+      final old = IconsServer(), fresh = IconsServer();
+      var provider = 0;
+      final cache = AppIconCache(
+        'rotated',
+        directory: () async => null,
+        retryDelay: const Duration(milliseconds: 10),
+        network: () async => provider++ == 0 ? old : fresh,
+      );
+      expect(await cache.get('com.test.cached', 'a' * 16), isNotNull);
+      old.broken = true;
+      expect(await cache.get('com.test.next', 'b' * 16), isNull);
+      await Future<void>.delayed(const Duration(milliseconds: 25));
+      expect(await cache.get('com.test.next', 'b' * 16), isNotNull);
+      expect(provider, 2);
+      expect(await cache.get('com.test.cached', 'a' * 16), isNotNull);
+      expect(fresh.calls, 1);
+      cache.close();
+    },
+  );
 }

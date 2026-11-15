@@ -19,7 +19,7 @@ class FakeBle implements BleTransport {
   Completer<List<int>>? blocked;
   bool malformed = false;
   bool? locatorActive;
-  Object? discoveryFailure;
+  Object? discoveryFailure, statsFailure;
   @override
   Stream<RadioState> get radio async* {
     yield RadioState.ready;
@@ -57,6 +57,9 @@ class FakeBle implements BleTransport {
     }
     try {
       reads++;
+      if (characteristicId == statsId && statsFailure != null) {
+        throw statsFailure!;
+      }
       if (blocked != null && characteristicId == statsId) {
         return await blocked!.future;
       }
@@ -434,6 +437,38 @@ void main() {
       expect(ble.connections, 1);
       expect(c.pairingRecoveryRequired, isTrue);
       expect(c.error, contains('Re-pair the Thor'));
+    },
+  );
+  test(
+    'host authorization denial pauses retries and preserves the system pairing for repair',
+    () async {
+      fastRetries();
+      ble.statsFailure = StateError(
+        'CBATTErrorDomain Code=5 Authentication is insufficient.',
+      );
+      await establish();
+      expect(c.hostAuthorizationRequired, true);
+      expect(c.pairingRecoveryRequired, true);
+      expect(c.retryAt, isNull);
+      expect(c.error, contains('Approve this phone'));
+      ble.links.add(LinkState.disconnected);
+      await settle();
+      c.setForeground(false);
+      c.setForeground(true);
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      expect(ble.connections, 1);
+      expect(c.error, contains('Approve this phone'));
+      ble.statsFailure = null;
+      final retry = c.retryPhoneAuthorization();
+      await settle();
+      ble.links.add(LinkState.connected);
+      await retry;
+      await settle();
+      expect(c.connected, true);
+      expect(c.stats?.battery, 69);
+      expect(c.hostAuthorizationRequired, false);
+      expect(c.pairingRecoveryRequired, false);
+      expect(c.error, isNull);
     },
   );
   test('background refresh respects explicit Disconnect', () async {
