@@ -12,6 +12,8 @@ flutter test
 flutter build apk --release
 # Build platform targets sequentially, then configure your Xcode signing team:
 flutter build ios --release
+# Package and check the signed app (keeps macOS metadata out of the IPA):
+python3 tool/package_ipa.py package <Runner.app> Thor-Companion.ipa
 ```
 
 The exported Xcode project clears the local development-team setting. Choose your own team for Runner and the widget extension. Build caches and local SDK path files are not committed. 

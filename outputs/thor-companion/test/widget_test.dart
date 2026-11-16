@@ -242,7 +242,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Sync screens'), findsOneWidget);
     expect(tester.takeException(), isNull);
-    await tester.ensureVisible(find.text('Controller layout'));
+    await tester.ensureVisible(find.byKey(const ValueKey('quick-style')));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());

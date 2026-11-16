@@ -9,6 +9,49 @@ import 'package:thor_companion/ui.dart';
 import 'controls_test.dart' show ControlBle;
 
 void main() {
+  testWidgets(
+    'rapid refresh-rate taps cycle from the pending value without waiting for the host',
+    (tester) async {
+      final ble = ControlBle();
+      final c = CompanionController(transport: ble, rememberDevice: false);
+      tester.view.physicalSize = const Size(1000, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: AnimatedBuilder(
+                animation: c,
+                builder: (_, _) => ControlsPage(controller: c),
+              ),
+            ),
+          ),
+        ),
+      );
+      await c.connect(const NearbyThor('thor', 'Thor', -50));
+      ble.links.add(LinkState.connected);
+      await tester.pumpAndSettle();
+      ble.holdWrite = Completer<void>();
+      final button = find.byKey(const ValueKey('quick-hz'));
+      await tester.ensureVisible(button);
+      await tester.tap(button);
+      await tester.pump();
+      expect(c.controlNumber('hz'), 120);
+      await tester.tap(button);
+      await tester.pump();
+      expect(c.controlNumber('hz'), 60);
+      ble.holdWrite!.complete();
+      await tester.pumpAndSettle();
+      expect(c.controlNumber('hz'), 60);
+      expect(c.controlError, isNull);
+      await tester.pumpWidget(const SizedBox());
+      c.dispose();
+      await ble.close();
+    },
+  );
+
   for (final setting in ['brightness', 'volume']) {
     testWidgets(
       'linked $setting previews together and other controls stay active',
@@ -75,10 +118,10 @@ void main() {
         for (final slider in tester.widgetList<Slider>(sliders)) {
           expect(slider.onChanged, isNotNull);
         }
-        final toggle = tester.widget<SwitchListTile>(
-          find.widgetWithText(SwitchListTile, 'Vibration'),
+        final toggle = tester.widget<InkWell>(
+          find.byKey(const ValueKey('quick-vibration')),
         );
-        expect(toggle.onChanged, isNotNull);
+        expect(toggle.onTap, isNotNull);
         ble.holdWrite!.complete();
         await tester.pumpAndSettle();
         expect(c.controlError, isNull);

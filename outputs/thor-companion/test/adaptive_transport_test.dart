@@ -28,6 +28,9 @@ class TestBle implements BleTransport, ControlTransport, SignalTransport {
   final links = StreamController<LinkState>.broadcast();
   final live = StreamController<List<int>>.broadcast();
   Object? discoveryFailure;
+  Completer<void>? bootstrapGate;
+  Completer<List<int>>? statsGate;
+  int bootstraps = 0;
   bool missingCharacteristic = false;
   int discoveries = 0;
   int signal = -88, cancellations = 0, opens = 0;
@@ -52,7 +55,7 @@ class TestBle implements BleTransport, ControlTransport, SignalTransport {
   Stream<LinkState> connect(String id, {bool background = false}) {
     opens++;
     return Stream.multi((out) {
-      final sub = links.stream.listen(out.add);
+      final sub = links.stream.listen(out.add, onError: out.addError);
       out.onCancel = () async {
         cancellations++;
         await sub.cancel();
@@ -76,6 +79,7 @@ class TestBle implements BleTransport, ControlTransport, SignalTransport {
   bool supportsControls(String id) => true;
   @override
   Future<List<int>> read(String id, String c) async {
+    if (c == statsId && statsGate != null) return statsGate!.future;
     if (missingCharacteristic && c == statsId) {
       throw Exception("Characteristic not found or discovered: stats");
     }
@@ -93,6 +97,8 @@ class TestBle implements BleTransport, ControlTransport, SignalTransport {
   Future<void> writeControl(String id, List<int> bytes) async {
     final j = jsonDecode(utf8.decode(bytes)) as Map;
     if (j['set'] == 'network_session') {
+      bootstraps++;
+      await bootstrapGate?.future;
       reply = utf8.encode(
         '{"ack":"${j['id']}","error":"","hosts":["thor"],"pin":"${'a' * 64}","token":"${'b' * 64}","port":47183}',
       );
@@ -200,9 +206,61 @@ void main() {
     session = link.connect('thor-id').listen(states.add);
     await until(() => link.bleConnected);
     await link.discover('thor-id');
+    await link.read('thor-id', statsId);
     return states;
   }
 
+  test(
+    'initial discovery and battery read do not wait for optional network bootstrap',
+    () async {
+      ble.bootstrapGate = Completer<void>();
+      final states = <LinkState>[];
+      session = link.connect('thor-id').listen(states.add);
+      await until(() => link.bleConnected);
+      await link.discover('thor-id').timeout(const Duration(milliseconds: 200));
+      final stats = await link
+          .read('thor-id', statsId)
+          .timeout(const Duration(milliseconds: 200));
+      expect(jsonDecode(utf8.decode(stats))['battery_pct'], 70);
+      expect(ble.bootstraps, 0);
+      ble.bootstrapGate!.complete();
+    },
+  );
+  test(
+    'first encrypted read allows time to accept the system pairing prompt',
+    () async {
+      session = link.connect('thor-id').listen((_) {});
+      await until(() => link.bleConnected);
+      await link.discover('thor-id');
+      ble.statsGate = Completer<List<int>>();
+      final first = link.read('thor-id', statsId);
+      await Future<void>.delayed(const Duration(milliseconds: 2150));
+      ble.statsGate!.complete(ble.data(statsId));
+      expect(jsonDecode(utf8.decode(await first))['battery_pct'], 70);
+    },
+  );
+  test(
+    'removed pairing reaches the recovery flow instead of silent retries',
+    () async {
+      final c = CompanionController(
+        transport: link,
+        rememberDevice: false,
+        batteryPublisher: (_) async {},
+      );
+      try {
+        await c.connect(const NearbyThor('thor-id', 'Thor', -60));
+        await until(() => c.notificationsRequested);
+        ble.links.addError(StateError('Peer removed pairing information'));
+        await until(() => c.pairingRecoveryRequired);
+        expect(c.error, contains('pairing is out of date'));
+        final opens = ble.opens;
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        expect(ble.opens, opens);
+      } finally {
+        c.dispose();
+      }
+    },
+  );
   test(
     'background-invalidated characteristics rediscover and retry the read',
     () async {

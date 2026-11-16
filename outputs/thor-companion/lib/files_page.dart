@@ -7,6 +7,8 @@ import 'companion_controller.dart';
 import 'file_transfer.dart';
 import 'ui.dart';
 import 'ftp_page.dart';
+import 'network_endpoint.dart';
+import 'connection_health_page.dart';
 
 class FilesPage extends StatefulWidget {
   const FilesPage({super.key, required this.controller});
@@ -18,7 +20,7 @@ class FilesPage extends StatefulWidget {
 class _FilesPageState extends State<FilesPage> {
   FileConnection? connection;
   ThorFiles? client;
-  final host = TextEditingController();
+  String? activeHost;
   List<Map<String, dynamic>> roots = [], entries = [];
   String? root, error;
   String folder = '', status = '';
@@ -40,7 +42,7 @@ class _FilesPageState extends State<FilesPage> {
       );
       if (raw != null && mounted) {
         connection = FileConnection.fromMap(raw);
-        host.text = connection!.defaultHost;
+
         setState(() {});
       }
     } catch (_) {}
@@ -49,7 +51,7 @@ class _FilesPageState extends State<FilesPage> {
   @override
   void dispose() {
     client?.close();
-    host.dispose();
+
     widget.controller.controlsVisible = previousControls;
     super.dispose();
   }
@@ -89,10 +91,15 @@ class _FilesPageState extends State<FilesPage> {
   Future<void> pair() async {
     await task(() async {
       final j = await widget.controller.pairFiles();
-      final next = FileConnection.fromMap(j);
+      final raw = FileConnection.fromMap(j);
+      final next = raw
+          .withManualHost(
+            connection?.pin == raw.pin ? connection?.manualHost : null,
+          )
+          .retainingAddresses(connection);
       await fileBridge.invokeMethod('saveConnection', next.toMap());
       connection = next;
-      host.text = next.defaultHost;
+
       root = null;
       entries = [];
       roots = [];
@@ -102,8 +109,24 @@ class _FilesPageState extends State<FilesPage> {
   Future<void> connect() async {
     await task(() async {
       if (connection == null) return;
+      final saved = await fileBridge.invokeMapMethod<String, dynamic>(
+        'loadConnection',
+      );
+      if (saved != null) {
+        final latest = FileConnection.fromMap(saved);
+        if (latest.pin == connection!.pin) connection = latest;
+      }
+      final chosen = await connectFilesAutomatically(
+        connection!,
+        cancelled: () => !mounted,
+      );
+      if (!mounted) {
+        chosen.value.client.close();
+        return;
+      }
       client?.close();
-      client = ThorFiles(connection!, host.text);
+      client = chosen.value.client;
+      activeHost = chosen.host;
       final j = await client!.get('roots');
       roots = (j['roots'] as List)
           .map((r) => Map<String, dynamic>.from(r))
@@ -247,28 +270,23 @@ class _FilesPageState extends State<FilesPage> {
               ),
               if (connection != null) ...[
                 const SizedBox(height: 12),
-                TextField(
-                  controller: host,
-                  enabled: !busy,
-                  decoration: const InputDecoration(
-                    labelText: 'Thor IP address or hostname',
-                    helperText: 'Wi-Fi or VPN address',
-                  ),
+                Text(
+                  activeHost == null
+                      ? 'Address: Automatic · VPN / local network'
+                      : 'Connected · $activeHost',
                 ),
-                if (connection!.hosts.length > 1)
-                  Wrap(
-                    spacing: 8,
-                    children: connection!.hosts
-                        .map(
-                          (h) => ActionChip(
-                            label: Text(h),
-                            onPressed: busy
-                                ? null
-                                : () => setState(() => host.text = h),
+                TextButton(
+                  onPressed: busy
+                      ? null
+                      : () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => ConnectionHealthPage(
+                              controller: widget.controller,
+                            ),
                           ),
-                        )
-                        .toList(),
-                  ),
+                        ),
+                  child: const Text('Connection health'),
+                ),
                 const SizedBox(height: 12),
                 FilledButton(
                   onPressed: busy ? null : connect,

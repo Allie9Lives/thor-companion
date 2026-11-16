@@ -14,6 +14,9 @@ import 'screenshot_transfer.dart';
 import 'battery_history.dart';
 import 'battery_alerts.dart';
 import 'file_transfer.dart';
+import 'network_endpoint.dart';
+import 'connection_alerts.dart';
+import 'wifi_delegation.dart';
 
 enum CompanionPhase { idle, scanning, connecting, connected }
 
@@ -63,14 +66,28 @@ class CompanionController extends ChangeNotifier {
     );
     _clock = Timer.periodic(const Duration(seconds: 1), (_) {
       _checkForMissedUpdates();
+      _checkConnectionAlerts();
+      if (_foreground &&
+          connected &&
+          !_detailsPending &&
+          !keepAlivePaused &&
+          !readingsPaused &&
+          (wifiVisible || stats?.wifiEvent != null)) {
+        unawaited(_pollWifi());
+      }
       if (_foreground && !keepAlivePaused) unawaited(refreshActivity());
-      if (controlsVisible &&
+      if ((controlsVisible ||
+              (servicesVisible &&
+                  (_lastControlPoll == null ||
+                      DateTime.now().difference(_lastControlPoll!) >=
+                          const Duration(seconds: 5)))) &&
           !keepAlivePaused &&
           !powerBusy &&
           _foreground &&
           connected &&
           !reading &&
           !initializing &&
+          !_manualRecoveryRequired &&
           !controlBusy &&
           !_settingsDraining) {
         unawaited(refreshControls());
@@ -165,7 +182,9 @@ class CompanionController extends ChangeNotifier {
   final Future<void> Function(BatteryWidgetSnapshot?)? _batteryPublisher;
   bool automaticReconnect = true;
   bool _wantsConnection = false, _foreground = true;
-  bool _manualRecoveryRequired = false;
+  bool _manualRecoveryRequired = false, _hostAuthorizationRequired = false;
+  bool get hostAuthorizationRequired => _hostAuthorizationRequired;
+  bool get appInForeground => _foreground;
   Future<void>? _restoration;
   bool get pairingRecoveryRequired => _manualRecoveryRequired;
   int retryAttempt = 0;
@@ -219,6 +238,7 @@ class CompanionController extends ChangeNotifier {
     }
     final session = _session, id = selected!.id;
     controlBusy = true;
+    _lastControlPoll = DateTime.now();
     _notify();
     try {
       final bytes = await _transport!
@@ -306,19 +326,32 @@ class CompanionController extends ChangeNotifier {
       }
       owns = controlBusy = true;
       final id = '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}_d';
-      await (_transport as ControlTransport)
-          .writeControl(
-            device,
-            utf8.encode(
-              jsonEncode({
-                'id': id,
-                'set': command,
-                'value': value ?? (command == 'files_session' ? 1 : 0),
-                'target': ?target,
-              }),
-            ),
-          )
-          .timeout(const Duration(seconds: 10));
+      final bytes = utf8.encode(
+        jsonEncode({
+          'id': id,
+          'set': command,
+          'value': value ?? (command == 'files_session' ? 1 : 0),
+          'target': ?target,
+        }),
+      );
+      if (command == 'wifi_enable' ||
+          command == 'wifi_connect' ||
+          command == 'wifi_stage' ||
+          command == 'wifi_commit') {
+        if (adaptive != null) {
+          await adaptive!
+              .writeBluetoothControl(device, bytes)
+              .timeout(const Duration(seconds: 10));
+        } else {
+          await (_transport as ControlTransport)
+              .writeControl(device, bytes)
+              .timeout(const Duration(seconds: 10));
+        }
+      } else {
+        await (_transport as ControlTransport)
+            .writeControl(device, bytes)
+            .timeout(const Duration(seconds: 10));
+      }
       final j = decodeObject(
         await _transport!
             .read(device, controlId)
@@ -398,18 +431,304 @@ class CompanionController extends ChangeNotifier {
     if (!const ['ftp_status', 'ftp_start', 'ftp_stop'].contains(action)) {
       throw ArgumentError.value(action);
     }
-    return _requestDetails(action);
+    return hostServiceAction(action);
+  }
+
+  Future<Map<String, dynamic>> hostServiceAction(String action) async {
+    if (!const {
+      'ftp_status',
+      'ftp_start',
+      'ftp_stop',
+      'web_ops_status',
+      'web_ops_start',
+      'web_ops_stop',
+      'monitor_pause',
+      'monitor_resume',
+    }.contains(action)) {
+      throw ArgumentError.value(action);
+    }
+    final key = action.startsWith('ftp_')
+        ? 'ftp'
+        : action.startsWith('web_ops_')
+        ? 'web'
+        : 'monitor';
+    if (!serviceBusy.add(key)) throw StateError('This service is changing.');
+    _notify();
+    try {
+      final result = await _requestDetails(action);
+      if (result['svc'] is int) {
+        controls = ThorControlState.fromBytes(
+          utf8.encode(
+            jsonEncode({...?controls?.values, 'v': 1, 'svc': result['svc']}),
+          ),
+        );
+      }
+      if (action == 'monitor_resume') unawaited(refresh());
+      return result;
+    } finally {
+      serviceBusy.remove(key);
+      _notify();
+    }
+  }
+
+  Future<ThorFiles?> appImageConnection() async {
+    if (isDemo || !connected || hostAuthorizationRequired) return null;
+    FileConnection credentials;
+    try {
+      credentials = FileConnection.fromMap({
+        ...await _requestDetails('icons_session'),
+        'name': deviceDisplayName,
+      });
+    } on StateError catch (e) {
+      if (!e.message.toString().contains('Unsupported control')) rethrow;
+      final saved = await fileBridge.invokeMapMethod<String, dynamic>(
+        'loadConnection',
+      );
+      if (saved == null) return null;
+      credentials = FileConnection.fromMap(saved);
+    }
+    return (await connectFilesAutomatically(credentials)).value.client;
   }
 
   Future<Map<String, dynamic>> pairFiles() async {
     final j = await _requestDetails('files_session');
-    final result = {...j, 'name': deviceDisplayName};
-    await adaptive?.configure(FileConnection.fromMap(result));
-    return result;
+    var next = FileConnection.fromMap({...j, 'name': deviceDisplayName});
+    try {
+      final old = await fileBridge.invokeMapMethod<String, dynamic>(
+        'loadConnection',
+      );
+      if (old != null) {
+        next = next
+            .withManualHost(
+              FileConnection.fromMap(old).pin == next.pin
+                  ? FileConnection.fromMap(old).manualHost
+                  : null,
+            )
+            .retainingAddresses(FileConnection.fromMap(old));
+      }
+    } catch (_) {}
+    await adaptive?.configure(next);
+    return next.toMap();
+  }
+
+  Map<String, dynamic>? wifiState;
+  int? _wifiEvent;
+  String? _wifiDevice, wifiError, followStatus;
+  bool wifiVisible = false, followWifi = false, _wifiPolling = false;
+  DateTime? _wifiPollAt, _followAt;
+  String? _lastFollow;
+  ConnectionAlertTracker _connectionAlerts = ConnectionAlertTracker();
+  bool get bluetoothAvailable => adaptive?.bleConnected ?? connected;
+  final wifiFollowing = WifiFollowing();
+  Future<void> refreshWifi() async {
+    if (isDemo ||
+        !connected ||
+        _wifiPolling ||
+        _detailsPending ||
+        initializing ||
+        reading ||
+        controlBusy ||
+        _settingsDraining) {
+      return;
+    }
+    _wifiPolling = true;
+    _wifiPollAt = DateTime.now();
+    try {
+      final device = selected!.id;
+      final state = await _requestDetails('wifi_status');
+      if (selected?.id != device) return;
+      if (_wifiDevice != device) {
+        _wifiDevice = device;
+        _connectionAlerts = ConnectionAlertTracker();
+        _lastFollow = null;
+        followWifi = _rememberDevice
+            ? await SharedPreferencesAsync().getBool('wifi_follow:$device') ??
+                  false
+            : false;
+      }
+      wifiState = state;
+      _wifiEvent = (state['event'] as num?)?.toInt();
+      wifiError = null;
+      for (final alert in _connectionAlerts.wifi(
+        state,
+        batteryAlertOptions,
+        deviceDisplayName,
+        DateTime.now(),
+      )) {
+        await showBatteryAlert(alert);
+      }
+    } catch (e) {
+      if (wifiVisible) {
+        wifiError = e is StateError
+            ? e.message
+            : 'Could not read Wi-Fi. Check Controls recovery on the Thor.';
+      }
+    } finally {
+      _wifiPolling = false;
+      _notify();
+    }
+  }
+
+  Future<void> _pollWifi() async {
+    if (_wifiPollAt == null ||
+        DateTime.now().difference(_wifiPollAt!) >
+            Duration(seconds: wifiVisible ? 10 : 30)) {
+      await refreshWifi();
+    }
+    if (followWifi &&
+        !_wifiPolling &&
+        (_followAt == null ||
+            DateTime.now().difference(_followAt!) >
+                const Duration(seconds: 10))) {
+      _followAt = DateTime.now();
+      await _followPhoneWifi();
+    }
+  }
+
+  void _checkConnectionAlerts() {
+    if (isDemo || !_batteryOptionsLoaded) return;
+    final eligible =
+        _wantsConnection &&
+        (adaptive?.bluetoothRadio ?? radioState) == RadioState.ready &&
+        !keepAlivePaused &&
+        !readingsPaused &&
+        !_manualRecoveryRequired &&
+        !powerBusy;
+    final alerts = _connectionAlerts.bluetooth(
+      bluetoothAvailable,
+      eligible,
+      batteryAlertOptions,
+      deviceDisplayName,
+      DateTime.now(),
+    );
+    for (final alert in alerts) {
+      unawaited(showBatteryAlert(alert).catchError((Object _) {}));
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> wifiNetworks({bool nearby = false}) async {
+    final list = <Map<String, dynamic>>[];
+    var cursor = 0;
+    for (var page = 0; page < 101; page++) {
+      final j = await _requestDetails(
+        nearby ? 'wifi_scan' : 'wifi_saved',
+        value: cursor,
+      );
+      list.addAll(
+        ((j['items'] as List?) ?? []).cast<Map>().map(
+          (e) => Map<String, dynamic>.from(e),
+        ),
+      );
+      cursor = (j['next'] as num).toInt();
+      if (cursor < 0) return list;
+    }
+    throw StateError('Refresh the network list.');
+  }
+
+  Future<void> joinSavedWifi(int id) async {
+    if (!bluetoothAvailable) {
+      throw StateError('Keep this phone in Bluetooth range to change Wi-Fi.');
+    }
+    await _requestDetails('wifi_connect', value: id);
+    _wifiPollAt = null;
+  }
+
+  Future<void> joinNewWifi(
+    String name,
+    String security,
+    String password,
+  ) async {
+    if (!bluetoothAvailable) {
+      throw StateError('Keep this phone in Bluetooth range to change Wi-Fi.');
+    }
+    final config = utf8.encode(
+      jsonEncode({'s': name, 't': security, 'p': password}),
+    );
+    if (config.length > 1024) throw StateError('Network details are too long.');
+    final token = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
+    try {
+      for (var start = 0, n = 0; start < config.length; start += 36, n++) {
+        await _requestDetails(
+          'wifi_stage',
+          value: {
+            's': token,
+            'n': n,
+            'b': base64Encode(
+              config.sublist(start, math.min(start + 36, config.length)),
+            ),
+          },
+        );
+      }
+      await _requestDetails('wifi_commit', value: token);
+    } finally {
+      config.fillRange(0, config.length, 0);
+    }
+    _wifiPollAt = null;
+  }
+
+  Future<void> enableThorWifi() async {
+    await _requestDetails('wifi_enable', value: 1);
+  }
+
+  Future<void> openWifiSignIn() async {
+    await _requestDetails('wifi_portal');
+  }
+
+  Future<void> setFollowWifi(bool value) async {
+    if (value) await wifiFollowing.prepare();
+    followWifi = value;
+    _lastFollow = null;
+    _followAt = null;
+    followStatus = null;
+    if (_rememberDevice && selected != null) {
+      await SharedPreferencesAsync().setBool(
+        'wifi_follow:${selected!.id}',
+        value,
+      );
+    }
+    _notify();
+  }
+
+  Future<void> _followPhoneWifi() async {
+    try {
+      final observation = await wifiFollowing.current();
+      if (observation == null ||
+          observation.name.isEmpty ||
+          observation.event == _lastFollow) {
+        return;
+      }
+      final name = observation.name;
+      if (!bluetoothAvailable) {
+        followStatus = 'Bluetooth is needed to follow Wi-Fi.';
+        return;
+      }
+      if (wifiState?['name'] == name && wifiState?['connected'] == true) {
+        _lastFollow = observation.event;
+        return;
+      }
+      final matches = (await wifiNetworks())
+          .where((n) => n['n'] == name)
+          .toList();
+      if (matches.length != 1) {
+        followStatus = matches.isEmpty
+            ? 'Save $name on the Thor first.'
+            : 'Choose $name manually; more than one saved configuration matches.';
+        _lastFollow = observation.event;
+        return;
+      }
+      await joinSavedWifi((matches.single['id'] as num).toInt());
+      _lastFollow = observation.event;
+      followStatus = 'Requested $name.';
+    } catch (_) {
+      followStatus = 'Could not follow Wi-Fi. Choose a network below.';
+    }
+    _notify();
   }
 
   Future<void> refreshActivity() async {
-    if (!connected ||
+    if (_manualRecoveryRequired ||
+        !connected ||
+        readingsPaused ||
         reading ||
         initializing ||
         controlBusy ||
@@ -465,7 +784,14 @@ class CompanionController extends ChangeNotifier {
     }
   }
 
-  bool controlsVisible = false;
+  bool controlsVisible = false, servicesVisible = false;
+  DateTime? _lastControlPoll;
+  final serviceBusy = <String>{};
+  int? get serviceBits =>
+      controls?.values['svc'] is int ? controls!.values['svc'] as int : null;
+  bool get readingsPaused => serviceBits != null && (serviceBits! & 16) != 0;
+  bool? serviceRunning(int bit) =>
+      serviceBits == null ? null : (serviceBits! & bit) != 0;
   final batteryLedger = BatteryLedger();
   BatteryAlertOptions batteryAlertOptions = BatteryAlertOptions();
   BatteryAlertTracker _batteryAlertTracker = BatteryAlertTracker();
@@ -1274,6 +1600,7 @@ class CompanionController extends ChangeNotifier {
   String? error;
   bool notificationsRequested = false, reading = false, initializing = false;
   Object? lastFailure;
+  String? lastFailureStage;
   int receivedCount = 0;
   int _session = 0;
   int _scanEpoch = 0;
@@ -1289,10 +1616,14 @@ class CompanionController extends ChangeNotifier {
   bool get busy => phase == CompanionPhase.connecting || initializing;
   bool get stale =>
       !connected ||
-      (!isDemo && !_freshThisConnection) ||
-      receivedAt == null ||
-      DateTime.now().difference(receivedAt!) > const Duration(seconds: 90);
-  String get freshness => ageLabel(receivedAt, DateTime.now());
+      (!readingsPaused &&
+          ((!isDemo && !_freshThisConnection) ||
+              receivedAt == null ||
+              DateTime.now().difference(receivedAt!) >
+                  const Duration(seconds: 90)));
+  String get freshness => readingsPaused
+      ? 'Monitoring paused · last readings shown'
+      : ageLabel(receivedAt, DateTime.now());
   String get radioMessage => switch (radioState) {
     RadioState.off => 'Turn on Bluetooth on your phone to find your Thor.',
     RadioState.unauthorized =>
@@ -1374,6 +1705,7 @@ class CompanionController extends ChangeNotifier {
   // may also remain open without notifications. Repair a missed 30s update
   // before the 90s stale limit, without background polling or control overlap.
   void _checkForMissedUpdates() {
+    if (readingsPaused) return;
     if (_disposed ||
         isDemo ||
         !_foreground ||
@@ -1664,6 +1996,7 @@ class CompanionController extends ChangeNotifier {
       ++_intentEpoch;
       retryAttempt = 0;
       _manualRecoveryRequired = false;
+      _hostAuthorizationRequired = false;
     }
     unawaited(_saveConnectionIntent());
     if (connected && selected?.id == device.id) {
@@ -1729,13 +2062,23 @@ class CompanionController extends ChangeNotifier {
             onError: (Object e) {
               if (_disposed || session != _session) return;
               lastFailure = e;
+              lastFailureStage = 'Bluetooth connection';
               logBle('Thor BLE connection error: $e');
+              final needsPairing =
+                  e is StaleServiceCache ||
+                  e.toString().toLowerCase().contains(
+                    'peer removed pairing information',
+                  );
+              if (needsPairing) {
+                _manualRecoveryRequired = true;
+                _hostAuthorizationRequired = false;
+                error = StaleServiceCache().message;
+                _cancelRetry();
+              }
               _linkLost(
                 session,
-                e.toString().toLowerCase().contains(
-                      'peer removed pairing information',
-                    )
-                    ? 'Bluetooth pairing has changed. Forget this Thor in Settings → Bluetooth, connect again, then use Repair phone connection in Thor Monitor if readings are denied.'
+                needsPairing
+                    ? StaleServiceCache().message
                     : 'Could not connect to the Thor. Check that monitoring is running and try again.',
               );
             },
@@ -1759,6 +2102,7 @@ class CompanionController extends ChangeNotifier {
     notificationsRequested = false;
     error = null;
     _notify();
+    var setupStep = 'Service discovery';
     try {
       await _liveSubscription?.cancel();
       _liveSubscription = null;
@@ -1768,10 +2112,12 @@ class CompanionController extends ChangeNotifier {
       if (_disposed || session != _session || !connected) return;
       logBle('Thor BLE service discovery complete');
       _hardwareReadAt = null; // A reconnect also picks up device renames.
+      setupStep = 'First device reading';
       final success = await _readStats(session);
       logBle('Thor BLE initial stats read: success=$success');
       // Do not hide a read/pairing error behind a failed subscription.
       if (!success || _disposed || session != _session || !connected) return;
+      setupStep = 'Live updates';
       notificationsRequested = true;
       _liveSubscription = _transport
           .subscribe(selected!.id, liveId)
@@ -1789,6 +2135,7 @@ class CompanionController extends ChangeNotifier {
                 _notify();
               } catch (e) {
                 lastFailure = e;
+                lastFailureStage = setupStep;
                 error = 'Received an unreadable update. Tap Refresh to retry.';
                 _notify();
               }
@@ -1796,6 +2143,7 @@ class CompanionController extends ChangeNotifier {
             onError: (Object e) {
               if (_disposed || session != _session) return;
               lastFailure = e;
+              lastFailureStage = setupStep;
               logBle('Thor BLE subscription: $e');
               notificationsRequested = false;
               error = 'Live updates stopped. Tap Refresh to restore them.';
@@ -1814,9 +2162,11 @@ class CompanionController extends ChangeNotifier {
     } catch (e) {
       if (session == _session) {
         lastFailure = e;
+        lastFailureStage = setupStep;
         logBle('Thor BLE setup: $e');
         if (e is StaleServiceCache) {
           _manualRecoveryRequired = true;
+          _hostAuthorizationRequired = false;
           _cancelRetry();
           _linkLost(session, e.message);
           return;
@@ -1853,11 +2203,15 @@ class CompanionController extends ChangeNotifier {
   }
 
   Future<bool> _readStats(int session) async {
-    if (reading ||
-        controlBusy ||
-        session != _session ||
-        !connected ||
-        selected == null) {
+    if (session != _session || !connected || selected == null) return false;
+    if (reading || controlBusy) {
+      // A control or read that outlived the previous link can still hold the
+      // flags. Replay this read when it finishes instead of leaving a new link
+      // without readings or live updates.
+      _refreshAfterControl = true;
+      logBle(
+        'Thor BLE reading deferred: ${reading ? 'read' : 'control'} in progress',
+      );
       return false;
     }
     final deviceId = selected!.id;
@@ -1879,7 +2233,12 @@ class CompanionController extends ChangeNotifier {
         controls!.values['find'] = next.locatorActive! ? 1 : 0;
       }
       await _observeBattery(next, deviceId);
+      if (next.wifiEvent != null && next.wifiEvent != _wifiEvent) {
+        unawaited(refreshWifi());
+      }
       if (_disposed || session != _session) return false;
+      _manualRecoveryRequired = false;
+      _hostAuthorizationRequired = false;
       _freshThisConnection = true;
       receivedAt = DateTime.now();
       receivedCount++;
@@ -1888,6 +2247,7 @@ class CompanionController extends ChangeNotifier {
       _cancelRetry();
       unawaited(_publishWidget());
       lastFailure = null;
+      lastFailureStage = null;
       _notify();
       if (hardware == null ||
           _hardwareReadAt == null ||
@@ -1912,6 +2272,7 @@ class CompanionController extends ChangeNotifier {
         } catch (e) {
           if (session == _session) {
             lastFailure = e;
+            lastFailureStage = 'Device reading';
             error =
                 'Readings received. Tap Refresh to retry the device details.';
           }
@@ -1927,22 +2288,37 @@ class CompanionController extends ChangeNotifier {
     } catch (e) {
       if (session == _session) {
         lastFailure = e;
+        lastFailureStage = 'Device reading';
         logBle('Thor BLE read: $e');
-        final detail = e.toString().toLowerCase();
-        final pairingFailure =
-            detail.contains('authentication is insufficient') ||
-            detail.contains('peer removed pairing information') ||
-            detail.contains('insufficient authentication');
-        error = pairingFailure
-            ? 'Phone authorization needs repair. On the Thor, open Thor Monitor → Settings → Repair phone connection, approve this phone, then reconnect. If iOS says pairing information was removed, forget the Thor in Settings → Bluetooth and connect again first.'
-            : e is FormatException
-            ? 'Received an incomplete device reading. Tap Refresh to retry.'
-            : 'Could not read the Thor. Keep it open, check pairing on both devices, then tap Refresh.';
+        final security = classifyBleSecurityFailure(e);
+        if (security != BleSecurityFailure.none) {
+          _manualRecoveryRequired = true;
+          _hostAuthorizationRequired =
+              security != BleSecurityFailure.pairingRemoved;
+          _cancelRetry();
+          error = switch (security) {
+            BleSecurityFailure.notApproved =>
+              'Approve this phone on the Thor: Settings → Repair phone connection. Then tap Try again. You do not need to forget the Bluetooth pairing.',
+            // Older hosts also report an unapproved phone this way.
+            BleSecurityFailure.notSecurelyPaired =>
+              'Approve this phone on the Thor: Settings → Repair phone connection, then tap Try again. If the phone is not listed there, remove the Thor from this phone’s Bluetooth settings and pair again, confirming the code on both screens.',
+            _ => StaleServiceCache().message,
+          };
+        } else {
+          error = e is FormatException
+              ? 'Received an incomplete device reading. Tap Refresh to retry.'
+              : 'Could not read the Thor. Keep it open, check pairing on both devices, then tap Refresh.';
+        }
       }
       return false;
     } finally {
       if (session == _session) {
         reading = false;
+        if (stats?.wifiEvent != null &&
+            stats?.wifiEvent != _wifiEvent &&
+            !keepAlivePaused) {
+          unawaited(refreshWifi());
+        }
         unawaited(refreshActivity());
         _flushRefreshAfterControl();
         _notify();
@@ -1960,7 +2336,7 @@ class CompanionController extends ChangeNotifier {
     notificationsRequested = false;
     reading = false;
     initializing = false;
-    error = message;
+    error = _manualRecoveryRequired && error != null ? error : message;
     _freshThisConnection = false;
     unawaited(_publishWidget());
     unawaited(_cancelLink());
@@ -2002,10 +2378,20 @@ class CompanionController extends ChangeNotifier {
     _notify();
   }
 
+  Future<void> retryPhoneAuthorization() async {
+    _manualRecoveryRequired = _hostAuthorizationRequired = false;
+    final device = selected ?? remembered;
+    if (connected) {
+      await refresh();
+    } else if (device != null) {
+      await connect(device);
+    }
+  }
+
   Future<void> scanAfterPairingReset() async {
     // iOS system pairing must be removed by the user before this step.
     await forget();
-    _manualRecoveryRequired = false;
+    _manualRecoveryRequired = _hostAuthorizationRequired = false;
     await startScan();
   }
 

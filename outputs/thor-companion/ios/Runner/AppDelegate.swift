@@ -7,6 +7,7 @@ import Security
 import WidgetKit
 import ActivityKit
 import BackgroundTasks
+import AppIntents
 
 private final class ThorAlertDelegate: NSObject, UNUserNotificationCenterDelegate {
   func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
@@ -72,6 +73,15 @@ private final class ThorAlertDelegate: NSObject, UNUserNotificationCenterDelegat
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    let wifiRegistrar = engineBridge.pluginRegistry.registrar(forPlugin: "ThorWifiBridge")!
+    let wifi = FlutterMethodChannel(name:"com.alan.thorCompanion/wifi",binaryMessenger:wifiRegistrar.messenger())
+    wifi.setMethodCallHandler { call,result in
+      guard call.method == "current" else { result(FlutterMethodNotImplemented);return }
+      let store=UserDefaults.standard,at=UserDefaults.standard.double(forKey:"thorFollowAt")
+      let name=store.string(forKey:"thorFollowSSID")
+      // Keep the fresh automation request for a retry if Bluetooth is reconnecting.
+      result(Date().timeIntervalSince1970-at >= 0 && Date().timeIntervalSince1970-at < 120 && name != nil ? ["name":name!,"event":String(at)] : nil)
+    }
     let refreshRegistrar = engineBridge.pluginRegistry.registrar(forPlugin: "ThorBackgroundRefreshBridge")!
     let refresh = FlutterMethodChannel(name: "com.alan.thorCompanion/backgroundRefresh", binaryMessenger: refreshRegistrar.messenger())
     refreshChannel = refresh
@@ -92,6 +102,16 @@ private final class ThorAlertDelegate: NSObject, UNUserNotificationCenterDelegat
     aboutChannel.setMethodCallHandler { call, result in
       switch call.method {
       case "version": result(["version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "", "build": Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""])
+      case "appearanceIcon":
+        guard let mode = call.arguments as? String, ["dark","light","clearPurple","rainbow"].contains(mode) else { result(FlutterError(code:"icon",message:"Unknown theme.",details:nil)); return }
+        let icon: String? = ["light":"AppIconLight","clearPurple":"AppIconPurple","rainbow":"AppIconRainbow"][mode]
+        guard UIApplication.shared.applicationState == .active else {result(FlutterError(code:"icon",message:"Open the app to update its icon.",details:nil));return}
+        if UIApplication.shared.alternateIconName == icon {result(nil);return}
+        guard UIApplication.shared.supportsAlternateIcons else {result(FlutterError(code:"icon",message:"Alternate icons are unavailable.",details:nil));return}
+        UIApplication.shared.setAlternateIconName(icon) { error in if let error = error {result(FlutterError(code:"icon",message:error.localizedDescription,details:nil))} else {result(nil)} }
+      case "webOps":
+        guard let address = call.arguments as? String, let url = URL(string: address), url.scheme == "https", url.port == 47184, url.host != nil, url.user == nil, url.password == nil else {result(FlutterError(code:"open_link",message:"Invalid Web Ops address.",details:nil));return}
+        UIApplication.shared.open(url,options:[:]) {opened in result(opened ? nil : FlutterError(code:"open_link",message:"Could not open Web Ops.",details:nil))}
       case "github": UIApplication.shared.open(URL(string: "https://github.com/Allie9Lives")!, options: [:]) { opened in if opened { result(nil) } else { result(FlutterError(code:"open_link",message:"Couldn’t open GitHub.",details:nil)) } }
       default: result(FlutterMethodNotImplemented)
       }
@@ -109,7 +129,7 @@ private final class ThorAlertDelegate: NSObject, UNUserNotificationCenterDelegat
         return
       }
       guard call.method == "show", let args = call.arguments as? [String: String],
-          let id = args["id"], ["low10", "low20", "charged80", "plugged", "unplugged", "closedLid", "test"].contains(id),
+          let id = args["id"], ["low10", "low20", "charged80", "plugged", "unplugged", "closedLid", "wifiChanged", "wifiLost", "wifiSignIn", "bluetoothLost", "bluetoothBack", "test"].contains(id),
           let title = args["title"], let body = args["body"], title.count < 160, body.count < 500 else {
         result(FlutterError(code: "battery_alert", message: "Invalid battery notification.", details: nil)); return
       }
@@ -119,7 +139,7 @@ private final class ThorAlertDelegate: NSObject, UNUserNotificationCenterDelegat
         }
         let content = UNMutableNotificationContent()
         content.title = title; content.body = body
-        content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: ["plugged", "charged80", "test"].contains(id) ? "thor_positive.wav" : "thor_warning.wav"))
+        content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: ["plugged", "charged80", "wifiChanged", "bluetoothBack", "test"].contains(id) ? "thor_positive.wav" : "thor_warning.wav"))
         let request = UNNotificationRequest(identifier: "thor-battery-" + id, content: content,
           trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false))
         UNUserNotificationCenter.current().add(request) { error in
@@ -387,5 +407,20 @@ extension AppDelegate {
         }
       }
     }
+  }
+}
+
+
+@available(iOS 16.0, *)
+struct FollowThorWifiIntent: AppIntent {
+  static var title: LocalizedStringResource = "Follow Wi-Fi on Thor"
+  static var description = IntentDescription("Ask your Thor to join a saved network when Follow phone Wi-Fi is enabled.")
+  static var openAppWhenRun: Bool = true
+  @Parameter(title: "Network name") var networkName: String
+  func perform() async throws -> some IntentResult {
+    guard !networkName.isEmpty, networkName.utf8.count <= 32 else { return .result() }
+    UserDefaults.standard.set(networkName, forKey: "thorFollowSSID")
+    UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "thorFollowAt")
+    return .result()
   }
 }

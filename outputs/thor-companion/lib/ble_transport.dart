@@ -30,6 +30,41 @@ class StaleServiceCache extends StateError {
       );
 }
 
+enum BleSecurityFailure { none, notApproved, notSecurelyPaired, pairingRemoved }
+
+/// Classifies Bluetooth security errors from CoreBluetooth (`CBATTError`) and
+/// Android/RxAndroidBle (`status 5 (GATT_INSUF_AUTHENTICATION)`) alike.
+/// Thor Monitor 0.17.0+ answers a bonded but unapproved phone with
+/// "insufficient authorization"; older hosts answer "authentication".
+BleSecurityFailure classifyBleSecurityFailure(Object error) {
+  final detail = error.toString().toLowerCase();
+  bool any(List<String> words) => words.any(detail.contains);
+  if (any(['peer removed pairing information'])) {
+    return BleSecurityFailure.pairingRemoved;
+  }
+  if (any([
+    'authorization is insufficient',
+    'insufficient authorization',
+    'gatt_insufficient_authorization',
+    'gatt_insuf_authorization',
+  ])) {
+    return BleSecurityFailure.notApproved;
+  }
+  if (any([
+    'authentication is insufficient',
+    'insufficient authentication',
+    'gatt_insufficient_authentication',
+    'gatt_insuf_authentication',
+    'encryption is insufficient',
+    'insufficient encryption',
+    'gatt_insuf_encryption',
+    'gatt_auth_fail',
+  ])) {
+    return BleSecurityFailure.notSecurelyPaired;
+  }
+  return BleSecurityFailure.none;
+}
+
 abstract class BleTransport {
   Stream<RadioState> get radio;
   Future<void> requestAccess();
@@ -160,12 +195,15 @@ class ReactiveBleTransport
   @override
   Future<void> discover(String deviceId) async {
     if (defaultTargetPlatform == TargetPlatform.android) {
-      await _ble.requestMtu(deviceId: deviceId, mtu: 185);
+      logBle('Thor BLE Android requesting MTU');
+      final mtu = await _ble.requestMtu(deviceId: deviceId, mtu: 185);
+      logBle('Thor BLE Android negotiated MTU: $mtu');
     }
     // iOS has already discovered the requested Thor services before emitting
     // connected. Reuse those objects instead of rediscovering every audio
     // service on each refresh. Android still needs explicit discovery.
     if (defaultTargetPlatform != TargetPlatform.iOS) {
+      logBle('Thor BLE Android discovering services');
       await _ble.discoverAllServices(deviceId);
     }
     var services = await _ble.getDiscoveredServices(deviceId);

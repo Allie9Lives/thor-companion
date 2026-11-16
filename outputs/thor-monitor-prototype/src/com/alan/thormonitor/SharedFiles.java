@@ -9,7 +9,8 @@ final class SharedFiles {
   File base=root.getCanonicalFile(),target=file.getCanonicalFile();String prefix=base.getPath()+File.separator;
   if(!target.equals(base)&&!target.getPath().startsWith(prefix))throw new SecurityException("Outside shared storage");
   String relative=target.equals(base)?"":target.getPath().substring(prefix.length());
-  if(relative.equals("Android/data")||relative.startsWith("Android/data/")||relative.equals("Android/obb")||relative.startsWith("Android/obb/"))throw new SecurityException("Android protects other apps' private files");return target;
+  String folded=relative.toLowerCase(Locale.ROOT); // shared storage is case-insensitive
+  if(folded.equals("android/data")||folded.startsWith("android/data/")||folded.equals("android/obb")||folded.startsWith("android/obb/"))throw new SecurityException("Android protects other apps' private files");return target;
  }
  static void serve(Context c,String method,String route,Map<String,String> q,InputStream in,OutputStream out,Map<String,String> headers)throws Exception{
   Map<String,File> roots=roots(c);

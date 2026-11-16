@@ -28,8 +28,9 @@ final class FileAccess {
  private static JSONObject status(Context c)throws Exception{return new JSONObject().put("version",c.getPackageManager().getPackageInfo(c.getPackageName(),0).versionName).put("monitoring",MonitorService.running).put("wifi",wifiConnected(c)).put("helper",new ThorControls(c).helperReady()).put("capture",true).put("recording",new ThorControls(c).helperReady()).put("adaptive_control",1).put("recovery_enabled",Recovery.enabled(c)).put("recovery_paired",Recovery.paired(c)).put("recovery_permission",Recovery.permitted(c)).put("recovery_status",Recovery.state).put("file_access",enabled(c)).put("overlay_permission",LocatorStopPanel.allowed(c));}
  private static final Set<Socket> active=ConcurrentHashMap.newKeySet();
  static boolean enabled(Context c){return c.getSharedPreferences("monitor",0).getBoolean("files_enabled",false);}
+ static boolean iconsEnabled(Context c){return c.getSharedPreferences("monitor",0).getBoolean("icons_enabled",false);}
  static String folder(Context c,String root){return c.getSharedPreferences("monitor",0).getString("files_"+root,"");}
- static synchronized void revoke(Context c){stop();c.getSharedPreferences("monitor",0).edit().putBoolean("files_enabled",false).remove("files_token").apply();}
+ static synchronized void revoke(Context c){stop();c.getSharedPreferences("monitor",0).edit().putBoolean("files_enabled",false).putBoolean("icons_enabled",false).remove("files_token").remove("icons_token").apply();}
  static void choose(Context c,String root,Uri uri,int flags){
   if(!root.equals("internal")&&!root.equals("sd"))throw new IllegalArgumentException();
   c.getContentResolver().takePersistableUriPermission(uri,flags&(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION));
@@ -37,20 +38,20 @@ final class FileAccess {
   if(!old.isEmpty()&&!old.equals(uri.toString())&&!old.equals(folder(c,root.equals("sd")?"internal":"sd")))try{c.getContentResolver().releasePersistableUriPermission(Uri.parse(old),Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION);}catch(Exception ignored){}
  }
  static synchronized void set(Context c,boolean on)throws Exception{
-  c.getSharedPreferences("monitor",0).edit().putBoolean("files_enabled",on).apply();if(on)start(c);else stop();
+  c.getSharedPreferences("monitor",0).edit().putBoolean("files_enabled",on).apply();if(on)start(c);else{stop();if(iconsEnabled(c))start(c);}
  }
  static synchronized void stop(){FtpAccess.stop();for(Socket client:active)try{client.close();}catch(Exception ignored){}active.clear();if(server!=null)try{server.close();}catch(Exception ignored){}server=null;if(acceptor!=null)acceptor.shutdownNow();if(workers!=null)workers.shutdownNow();}
  static synchronized void start(Context c)throws Exception{
+  if(!enabled(c)&&!iconsEnabled(c))return;
+  android.content.SharedPreferences prefs=c.getSharedPreferences("monitor",0);
+  for(String role:new String[]{"files","icons"})if((role.equals("files")?enabled(c):iconsEnabled(c))&&!prefs.contains(role+"_token")){byte[] token=new byte[32];new SecureRandom().nextBytes(token);prefs.edit().putString(role+"_token",hex(token)).commit();}
   if(server!=null&&!server.isClosed())return;
-  if(!enabled(c))return;
   app=c.getApplicationContext();
   SSLContext tls=tlsContext(c);
   SSLServerSocket socket=(SSLServerSocket)tls.getServerSocketFactory().createServerSocket();socket.setReuseAddress(true);socket.bind(new InetSocketAddress(PORT));socket.setEnabledProtocols(new String[]{"TLSv1.2"});
   server=socket;
-  android.content.SharedPreferences prefs=app.getSharedPreferences("monitor",0);
-  if(!prefs.contains("files_token")){byte[] token=new byte[32];new SecureRandom().nextBytes(token);prefs.edit().putString("files_token",hex(token)).commit();}
   workers=new ThreadPoolExecutor(2,2,30,TimeUnit.SECONDS,new ArrayBlockingQueue<Runnable>(4),new ThreadPoolExecutor.AbortPolicy());
-  acceptor=Executors.newSingleThreadExecutor();acceptor.execute(()->{while(!socket.isClosed()){try{SSLSocket client=(SSLSocket)socket.accept();client.setSoTimeout(15000);active.add(client);try{workers.execute(()->serve(client));}catch(Exception e){active.remove(client);client.close();}}catch(Exception e){if(socket.isClosed())break;}}});
+  acceptor=Executors.newSingleThreadExecutor();acceptor.execute(()->{while(!socket.isClosed()){try{SSLSocket client=(SSLSocket)socket.accept();if(!allowedPeer(client.getInetAddress())){client.close();continue;}client.setSoTimeout(15000);active.add(client);try{workers.execute(()->serve(client));}catch(Exception e){active.remove(client);client.close();}}catch(Exception e){if(socket.isClosed())break;}}});
  }
  static synchronized SSLContext tlsContext(Context c)throws Exception{
   KeyStore ks=KeyStore.getInstance("AndroidKeyStore");ks.load(null);String alias="thor-file-tls-ec-v1";
@@ -81,6 +82,11 @@ final class FileAccess {
  static synchronized JSONObject session(Context c,String id)throws Exception{
   set(c,true);return credentials(c,id);
  }
+ static synchronized JSONObject iconSession(Context c,String id)throws Exception{
+  c.getSharedPreferences("monitor",0).edit().putBoolean("icons_enabled",true).commit();start(c);
+  return credentials(c,id).put("token",c.getSharedPreferences("monitor",0).getString("icons_token","")).put("icons",true).put("files",false);
+ }
+ private static boolean matchesToken(String stored,String supplied){return !stored.isEmpty()&&MessageDigest.isEqual(("Bearer "+stored).getBytes(java.nio.charset.StandardCharsets.UTF_8),supplied.getBytes(java.nio.charset.StandardCharsets.UTF_8));}
  private static JSONObject credentials(Context c,String id)throws Exception{
   JSONArray hosts=new JSONArray();
   Enumeration<NetworkInterface> interfaces=NetworkInterface.getNetworkInterfaces();
@@ -110,16 +116,19 @@ final class FileAccess {
   @Override public void write(int b)throws IOException{started=true;out.write(b);}
   @Override public void write(byte[] b,int offset,int length)throws IOException{started=true;out.write(b,offset,length);}
  }
- private static void serve(SSLSocket socket){Uri partial=null;OutputStream out=null;android.os.PowerManager.WakeLock wake=null;
+ private static void serve(SSLSocket socket){Uri partial=null;OutputStream out=null;android.os.PowerManager.WakeLock wake=null;ScheduledFuture<?> headerDeadline=null;
   try{
-   SSLSocket client=socket;client.startHandshake();InputStream in=new BufferedInputStream(client.getInputStream());out=new ResponseOutput(client.getOutputStream());
+   headerDeadline=WebHttp.deadline(socket,20000);SSLSocket client=socket;client.startHandshake();InputStream in=new BufferedInputStream(client.getInputStream());out=new ResponseOutput(client.getOutputStream());
    String[] request=line(in,8192).split(" ");if(request.length!=3||!request[2].equals("HTTP/1.1"))throw new IllegalArgumentException("Invalid request");
    Map<String,String> headers=new HashMap<>();int total=0;while(true){String h=line(in,8192);total+=h.length();if(total>16384)throw new IllegalArgumentException("Headers too large");if(h.isEmpty())break;int split=h.indexOf(':');if(split<1)throw new IllegalArgumentException();String name=h.substring(0,split).toLowerCase(Locale.ROOT);if(headers.put(name,h.substring(split+1).trim())!=null)throw new IllegalArgumentException("Duplicate header");}
-   String expected="Bearer "+app.getSharedPreferences("monitor",0).getString("files_token","");
-   if(!enabled(app)||!MessageDigest.isEqual(expected.getBytes("UTF-8"),headers.getOrDefault("authorization","").getBytes("UTF-8"))){json(out,401,new JSONObject().put("error","Authorize file access from the paired companion"));return;}
+   headerDeadline.cancel(false);
    if(headers.containsKey("transfer-encoding")||headers.containsKey("origin"))throw new IllegalArgumentException("Unsupported request");
    URI url=new URI(request[1]);Map<String,String> q=query(url.getRawQuery());String route=url.getPath(),method=request[0];
-   wake=app.getSystemService(android.os.PowerManager.class).newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK,"ThorMonitor:Files");wake.acquire(30*60*1000L);
+   String supplied=headers.getOrDefault("authorization","");android.content.SharedPreferences auth=app.getSharedPreferences("monitor",0);
+   boolean full=enabled(app)&&matchesToken(auth.getString("files_token",""),supplied);
+   boolean icons=iconsEnabled(app)&&matchesToken(auth.getString("icons_token",""),supplied);
+   if(!full&&!(icons&&method.equals("GET")&&(route.equals("/v1/status")||route.equals("/v1/app-icon")))){json(out,icons?403:401,new JSONObject().put("error",icons?"App images only":"Link access from the paired companion"));return;}
+   wake=app.getSystemService(android.os.PowerManager.class).newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK,"ThorMonitor:Files");wake.setReferenceCounted(false);wake.acquire(30*60*1000L);transferWake.set(wake);
    if(method.equals("GET")&&route.equals("/v1/status")){json(out,200,status(app));return;}
    if(method.equals("GET")&&route.equals("/v1/link/read")){
     byte[] data=MonitorService.networkRead(q.getOrDefault("kind",""));json(out,200,new JSONObject().put("bytes",android.util.Base64.encodeToString(data,android.util.Base64.NO_WRAP)));return;
@@ -143,8 +152,8 @@ final class FileAccess {
     if(!wifiConnected(app))throw new IllegalStateException("Connect the Thor to Wi-Fi to capture screenshots");
     if(!new ThorControls(app).helperReady())throw new IllegalStateException("Advanced controls are unavailable. Check Recovery setup on the Thor.");
     if(!capturing.compareAndSet(false,true)){json(out,409,new JSONObject().put("error","A screenshot is already being captured"));return;}
-    ScheduledExecutorService deadline=Executors.newSingleThreadScheduledExecutor();deadline.schedule(()->{try{socket.close();}catch(Exception ignored){}},90,TimeUnit.SECONDS);
-    try{byte[] image=new ThorControls(app).captureImage(mode);reply(out,200,"application/x-thor-screenshot",image.length);copy(new ByteArrayInputStream(image),out,image.length);out.flush();}finally{capturing.set(false);deadline.shutdownNow();}
+    ScheduledFuture<?> deadline=WebHttp.deadline(socket,90000);
+    try{byte[] image=new ThorControls(app).captureImage(mode);reply(out,200,"application/x-thor-screenshot",image.length);copy(new ByteArrayInputStream(image),out,image.length);out.flush();}finally{capturing.set(false);deadline.cancel(false);}
     return;
    }
    if(SharedFiles.enabled(app)){SharedFiles.serve(app,method,route,q,in,out,headers);return;}
@@ -175,7 +184,12 @@ final class FileAccess {
    }
    json(out,404,new JSONObject().put("error","Unknown file operation"));
   }catch(Exception e){if(out!=null&&!((ResponseOutput)out).started)try{json(out,e instanceof SecurityException?403:400,new JSONObject().put("error",e instanceof IllegalArgumentException||e instanceof IllegalStateException||e instanceof FileNotFoundException?String.valueOf(e.getMessage()):"Transfer interrupted or folder unavailable"));}catch(Exception ignored){}
-  }finally{active.remove(socket);try{socket.close();}catch(Exception ignored){}if(partial!=null)try{DocumentsContract.deleteDocument(app.getContentResolver(),partial);}catch(Exception ignored){}if(wake!=null&&wake.isHeld())wake.release();}
+  }finally{transferWake.remove();if(headerDeadline!=null)headerDeadline.cancel(false);active.remove(socket);try{socket.close();}catch(Exception ignored){}if(partial!=null)try{DocumentsContract.deleteDocument(app.getContentResolver(),partial);}catch(Exception ignored){}if(wake!=null&&wake.isHeld())wake.release();}
  }
- static void copy(InputStream in,OutputStream out,long size)throws IOException{byte[] buffer=new byte[65536];long left=size,started=android.os.SystemClock.elapsedRealtime();while(left>0){if(android.os.SystemClock.elapsedRealtime()-started>30*60*1000L)throw new IOException("Transfer time limit reached");int n=in.read(buffer,0,(int)Math.min(buffer.length,left));if(n<0)throw new EOFException("Incomplete transfer");out.write(buffer,0,n);left-=n;if(Thread.currentThread().isInterrupted())throw new IOException("Cancelled");}}
+ /** Long transfers renew this request's wake lock while bytes are moving. */
+ private static final ThreadLocal<android.os.PowerManager.WakeLock> transferWake=new ThreadLocal<>();
+ /** Private/VPN addresses, or a peer on the same subnet as one of the Thor's own non-cellular interfaces (some networks assign public IPv4). */
+ static boolean allowedPeer(InetAddress peer){if(WebTls.privateAddress(peer))return true;try{byte[] p=peer.getAddress();for(NetworkInterface n:Collections.list(NetworkInterface.getNetworkInterfaces())){if(!n.isUp()||n.getName().startsWith("rmnet")||n.getName().startsWith("ccmni"))continue;for(InterfaceAddress ia:n.getInterfaceAddresses()){InetAddress own=ia.getAddress();if(own!=null&&samePrefix(own.getAddress(),p,ia.getNetworkPrefixLength()))return true;}}}catch(Exception ignored){}return false;}
+ static boolean samePrefix(byte[] a,byte[] b,int bits){if(a.length!=b.length||bits<(a.length==4?8:16)||bits>a.length*8)return false;for(int i=0;i<bits;i++){int m=0x80>>(i%8);if((a[i/8]&m)!=(b[i/8]&m))return false;}return true;}
+ static void copy(InputStream in,OutputStream out,long size)throws IOException{byte[] buffer=new byte[65536];long left=size,started=android.os.SystemClock.elapsedRealtime(),budget=WebHttp.transferBudget(size,30*60*1000L),renewed=started;while(left>0){long now=android.os.SystemClock.elapsedRealtime();if(now-started>budget)throw new IOException("Transfer time limit reached");if(now-renewed>=60000){renewed=now;android.os.PowerManager.WakeLock w=transferWake.get();if(w!=null)w.acquire(5*60000L);}int n=in.read(buffer,0,(int)Math.min(buffer.length,left));if(n<0)throw new EOFException("Incomplete transfer");out.write(buffer,0,n);left-=n;if(Thread.currentThread().isInterrupted())throw new IOException("Cancelled");}}
 }

@@ -6,6 +6,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'ble_transport.dart';
 import 'companion_controller.dart';
 import 'network_link.dart';
+import 'wifi_page.dart';
+import 'diagnostics.dart';
 import 'ui.dart';
 
 class ConnectionHealthPage extends StatefulWidget {
@@ -19,6 +21,8 @@ class _ConnectionHealthPageState extends State<ConnectionHealthPage> {
   late final NetworkLink network;
   bool previousControls = false;
   String? backgroundStatus;
+  Map<String, dynamic> platformInfo = {};
+  bool copying = false;
   static const backgroundChannel = MethodChannel(
     'com.alan.thorCompanion/backgroundRefresh',
   );
@@ -29,6 +33,16 @@ class _ConnectionHealthPageState extends State<ConnectionHealthPage> {
     previousControls = c.controlsVisible;
     c.controlsVisible = false;
     network = NetworkLink(c);
+    unawaited(
+      diagnosticChannel
+          .invokeMapMethod<String, dynamic>('info', {
+            'deviceId': c.selected?.id,
+          })
+          .then((value) {
+            if (mounted && value != null) setState(() => platformInfo = value);
+          })
+          .catchError((Object _) {}),
+    );
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
       unawaited(
         backgroundChannel
@@ -64,7 +78,40 @@ class _ConnectionHealthPageState extends State<ConnectionHealthPage> {
           ? 'Not ready'
           : 'Not checked';
       final fields = <String, String>{
+        'Report time': DateTime.now().toUtc().toIso8601String(),
+        if (platformInfo['client'] != null)
+          'Client': '${platformInfo['client']}',
+        if (platformInfo['phone'] != null) 'Phone': '${platformInfo['phone']}',
+        if (platformInfo['os'] != null) 'Phone OS': '${platformInfo['os']}',
         'Device': c.deviceDisplayName,
+        'App state': c.appInForeground ? 'Foreground' : 'Background',
+        if (platformInfo['bond'] != null)
+          'Android system pairing': '${platformInfo['bond']}',
+        if (platformInfo['scanPermission'] != null)
+          'Nearby scan permission': '${platformInfo['scanPermission']}',
+        if (platformInfo['connectPermission'] != null)
+          'Nearby connect permission': '${platformInfo['connectPermission']}',
+        'Connection setup': c.reading
+            ? 'Reading device data'
+            : c.initializing
+            ? 'Preparing services'
+            : c.connected
+            ? (c.receivedCount == 0
+                  ? 'Connected; first reading unavailable'
+                  : 'Readings received')
+            : c.phase.name,
+        if (c.error != null)
+          'Current error': redactConnectionDiagnostic(c.error!),
+        if (c.lastFailure != null)
+          'Last failure': redactConnectionDiagnostic(c.lastFailure!),
+        if (c.lastFailureStage != null) 'Failure stage': c.lastFailureStage!,
+        if (c.adaptive?.lastBluetoothError != null)
+          'Native Bluetooth error': c.adaptive!.lastBluetoothError!,
+        if (c.adaptive?.lastBluetoothErrorAt != null)
+          'Native error time': c.adaptive!.lastBluetoothErrorAt!
+              .toUtc()
+              .toIso8601String(),
+        'Pairing repair required': c.pairingRecoveryRequired ? 'Yes' : 'No',
         'Bluetooth radio': switch (c.radioState) {
           RadioState.ready => 'Ready',
           RadioState.off => 'Off',
@@ -72,11 +119,15 @@ class _ConnectionHealthPageState extends State<ConnectionHealthPage> {
           RadioState.unavailable => 'Unavailable',
           _ => 'Starting',
         },
+        if (c.adaptive?.knownNetworkHosts.isNotEmpty == true)
+          'Saved network addresses': c.adaptive!.knownNetworkHosts.join(' · '),
         'Control route': c.adaptive?.routeLabel ?? 'Bluetooth',
         'Bluetooth link': c.adaptive == null
             ? c.phase.name
             : c.adaptive!.bleConnected
-            ? 'Connected · retained for fallback'
+            ? c.receivedCount == 0
+                  ? 'Connected · awaiting first reading'
+                  : 'Connected · retained for fallback'
             : 'Reconnecting',
         if (c.adaptive?.policy.rssi != null)
           'Live Bluetooth signal': '${c.adaptive!.policy.rssi} dBm',
@@ -91,7 +142,11 @@ class _ConnectionHealthPageState extends State<ConnectionHealthPage> {
             : 'Not subscribed',
         'Last reading': c.freshness,
         'Readings received': '${c.receivedCount}',
-        'Automatic reconnect': c.automaticReconnect ? 'Enabled' : 'Paused',
+        'Automatic reconnect': c.automaticReconnect
+            ? (c.pairingRecoveryRequired
+                  ? 'Paused for pairing repair'
+                  : 'Enabled')
+            : 'Off in settings',
         ...?(backgroundStatus == null
             ? null
             : {'Background App Refresh': backgroundStatus!}),
@@ -134,6 +189,46 @@ class _ConnectionHealthPageState extends State<ConnectionHealthPage> {
         body: ListView(
           padding: const EdgeInsets.all(20),
           children: [
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => WifiPage(controller: c),
+                ),
+              ),
+              icon: const Icon(Icons.wifi),
+              label: const Text('Thor Wi-Fi'),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              icon: const Icon(Icons.copy_outlined),
+              label: Text(copying ? 'Copying…' : 'Copy connection report'),
+              onPressed: copying
+                  ? null
+                  : () async {
+                      setState(() => copying = true);
+                      final events = await connectionEventReport();
+                      await Clipboard.setData(
+                        ClipboardData(
+                          text: '$report\n\nRecent connection events\n$events',
+                        ),
+                      );
+                      if (context.mounted) {
+                        setState(() => copying = false);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Connection report copied'),
+                          ),
+                        );
+                      }
+                    },
+            ),
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 10),
+              child: Text(
+                'Includes phone details, errors and recent connection events. Review before sharing.',
+                style: TextStyle(fontSize: 14),
+              ),
+            ),
             surface(
               copyText: report,
               copyLabel: 'Connection health',
@@ -201,7 +296,7 @@ class _ConnectionHealthPageState extends State<ConnectionHealthPage> {
               ),
               const SizedBox(height: 16),
             ],
-            NetworkConnectionCard(link: n),
+            NetworkConnectionCard(link: n, showAdvanced: true),
             const SizedBox(height: 16),
             surface(
               child: Column(

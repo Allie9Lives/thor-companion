@@ -8,6 +8,7 @@ import 'design_components.dart';
 import 'battery_pages.dart';
 import 'stats_copy.dart';
 import 'runtime_view.dart';
+import 'service_status.dart';
 
 class Dashboard extends StatelessWidget {
   const Dashboard({super.key, required this.controller});
@@ -87,8 +88,15 @@ class Dashboard extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 6),
-        Text(c.freshness, style: TextStyle(color: secondaryText, fontSize: 14)),
-        SizedBox(height: 20),
+        Text(
+          c.freshness,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: secondaryText, fontSize: 14),
+        ),
+        const SizedBox(height: 12),
+        ServiceStatusStrip(controller: c),
+        const SizedBox(height: 18),
         batteryPanel(),
         SizedBox(height: 16),
         performance(),
@@ -469,6 +477,7 @@ class Dashboard extends StatelessWidget {
           children: [
             FocusedApps(
               device: c.selected?.id,
+              imageConnection: c.appImageConnection,
               apps: (c.activity?['apps'] as List? ?? [])
                   .map((a) => Map<String, dynamic>.from(a as Map))
                   .toList(),

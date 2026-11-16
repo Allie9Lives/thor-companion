@@ -15,6 +15,7 @@ final class ActivityMonitor {
    cached=new JSONObject().put("at",System.currentTimeMillis()).put("lid",closed==null?JSONObject.NULL:closed).put("closed_s",policy.seconds(now)).put("apps",apps).put("gpu",gpu<0?JSONObject.NULL:gpu).put("warning",warning).put("reason",reason);
   }catch(Exception e){cached=new JSONObject();try{cached.put("error","Activity unavailable; check Automatic recovery");}catch(Exception ignored){}policy.observe(now,null,-1,-1,Double.NaN,false);}
  }
+ synchronized JSONObject webReply()throws Exception{return new JSONObject(cached.toString());}
  synchronized JSONObject reply(String id)throws Exception{
   JSONObject j=new JSONObject(cached.toString()).put("ack",id);if(!j.has("at")&&!j.has("error"))j.put("error","Waiting for activity");if(!j.has("error"))j.put("error","");
   if(j.optString("reason").isEmpty())j.remove("reason");if(j.optLong("warning")==0)j.remove("warning");

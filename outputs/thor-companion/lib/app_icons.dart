@@ -4,17 +4,21 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'file_transfer.dart';
+import 'network_endpoint.dart';
 import 'package:flutter/material.dart';
 
 /// Device/version-scoped files. Cached icons do not wait behind network requests.
-class AppIconCache {
+class AppIconCache extends ChangeNotifier {
   AppIconCache(
     this.device, {
     Future<Directory?> Function()? directory,
     Future<ThorFiles?> Function()? network,
+    this.retryDelay = const Duration(seconds: 20),
   }) : _directoryProvider = directory ?? _nativeDirectory,
        _networkProvider = network ?? _nativeNetwork;
   final String device;
+  final Duration retryDelay;
+  Timer? _retryTimer;
   final Future<Directory?> Function() _directoryProvider;
   final Future<ThorFiles?> Function() _networkProvider;
   Future<Directory?>? _directory;
@@ -22,7 +26,6 @@ class AppIconCache {
   ThorFiles? _transport;
   bool _offline = false, _closed = false;
   Future<void> _queue = Future.value();
-  DateTime? _retryAt;
   final _failed = <String>{};
   final _pending = <String, Future<Uint8List?>>{};
   static Future<Directory?> _nativeDirectory() async {
@@ -36,7 +39,7 @@ class AppIconCache {
     );
     if (saved == null) return null;
     final connection = FileConnection.fromMap(saved);
-    return ThorFiles(connection, connection.defaultHost);
+    return (await connectFilesAutomatically(connection)).value.client;
   }
 
   static bool validPng(Uint8List bytes) {
@@ -59,15 +62,6 @@ class AppIconCache {
           r'^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$',
         ).hasMatch(package)) {
       return Future.value(null);
-    }
-    if (_offline && _retryAt != null && DateTime.now().isAfter(_retryAt!)) {
-      _offline = false;
-      _network = null;
-      _transport = null;
-      for (final key in _failed) {
-        _pending.remove(key);
-      }
-      _failed.clear();
     }
     final key = sha256
         .convert(utf8.encode('$device|$package|$revision'))
@@ -102,7 +96,10 @@ class AppIconCache {
           return;
         }
         _transport ??= await (_network ??= _networkProvider());
-        if (_transport != null) {
+        if (_transport == null) {
+          _failed.add(key);
+          _scheduleRetry();
+        } else {
           bytes = await _transport!
               .appIcon(package, revision)
               .timeout(const Duration(seconds: 4));
@@ -138,18 +135,36 @@ class AppIconCache {
         /* Missing icon: keep its letter and try the next app. */
       } catch (_) {
         _failed.add(key);
-        _retryAt = DateTime.now().add(const Duration(seconds: 20));
-        _offline = true;
-        _transport?.close();
+        _scheduleRetry();
       }
       if (!done.isCompleted) done.complete(bytes);
     });
     return done.future;
   }
 
-  void close() {
-    _closed = true;
+  void _scheduleRetry() {
+    _offline = true;
     _transport?.close();
+    _transport = null;
+    _network = null;
+    if (_closed || (_retryTimer?.isActive ?? false)) return;
+    _retryTimer = Timer(retryDelay, () {
+      if (_closed) return;
+      _offline = false;
+      for (final key in _failed) {
+        _pending.remove(key);
+      }
+      _failed.clear();
+      notifyListeners();
+    });
+  }
+
+  void close() {
+    if (_closed) return;
+    _closed = true;
+    _retryTimer?.cancel();
+    _transport?.close();
+    super.dispose();
   }
 }
 

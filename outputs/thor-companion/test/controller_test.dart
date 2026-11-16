@@ -19,7 +19,7 @@ class FakeBle implements BleTransport {
   Completer<List<int>>? blocked;
   bool malformed = false;
   bool? locatorActive;
-  Object? discoveryFailure;
+  Object? discoveryFailure, statsFailure;
   @override
   Stream<RadioState> get radio async* {
     yield RadioState.ready;
@@ -57,6 +57,9 @@ class FakeBle implements BleTransport {
     }
     try {
       reads++;
+      if (characteristicId == statsId && statsFailure != null) {
+        throw statsFailure!;
+      }
       if (blocked != null && characteristicId == statsId) {
         return await blocked!.future;
       }
@@ -82,6 +85,26 @@ class FakeBle implements BleTransport {
     await links.close();
     await notifications.close();
     await radios.close();
+  }
+}
+
+/// Adds a control channel whose read can be held open across a link loss.
+class FakeControlBle extends FakeBle implements ControlTransport {
+  Completer<List<int>>? control;
+  int controlReads = 0;
+  @override
+  bool supportsControls(String deviceId) => true;
+  @override
+  Future<void> writeControl(String deviceId, List<int> bytes) async {}
+  @override
+  Future<List<int>> read(String deviceId, String characteristicId) {
+    if (characteristicId != controlId) {
+      return super.read(deviceId, characteristicId);
+    }
+    // Only the first control read hangs; later ones fail fast like a busy Thor.
+    if (++controlReads > 1) return Future.error(StateError('Controls busy'));
+    control = Completer<List<int>>();
+    return control!.future;
   }
 }
 
@@ -436,6 +459,66 @@ void main() {
       expect(c.error, contains('Re-pair the Thor'));
     },
   );
+  test(
+    'host authorization denial pauses retries and preserves the system pairing for repair',
+    () async {
+      fastRetries();
+      ble.statsFailure = StateError(
+        'CBATTErrorDomain Code=5 Authentication is insufficient.',
+      );
+      await establish();
+      expect(c.hostAuthorizationRequired, true);
+      expect(c.pairingRecoveryRequired, true);
+      expect(c.retryAt, isNull);
+      expect(c.error, contains('Approve this phone'));
+      ble.links.add(LinkState.disconnected);
+      await settle();
+      c.setForeground(false);
+      c.setForeground(true);
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      expect(ble.connections, 1);
+      expect(c.error, contains('Approve this phone'));
+      ble.statsFailure = null;
+      final retry = c.retryPhoneAuthorization();
+      await settle();
+      ble.links.add(LinkState.connected);
+      await retry;
+      await settle();
+      expect(c.connected, true);
+      expect(c.stats?.battery, 69);
+      expect(c.hostAuthorizationRequired, false);
+      expect(c.pairingRecoveryRequired, false);
+      expect(c.error, isNull);
+    },
+  );
+  test(
+    'Android authorization denial asks for approval instead of a generic read error',
+    () async {
+      fastRetries();
+      ble.statsFailure = StateError(
+        'GATT exception from MAC address XX:XX:XX:XX:XX:XX, status 8 (GATT_INSUF_AUTHORIZATION or GATT_CONN_TIMEOUT), type BleGattOperation{description=\'CHARACTERISTIC_READ\'}.',
+      );
+      await establish();
+      expect(c.hostAuthorizationRequired, true);
+      expect(c.pairingRecoveryRequired, true);
+      expect(c.retryAt, isNull);
+      expect(c.error, startsWith('Approve this phone'));
+      expect(c.error, isNot(contains('pair again')));
+    },
+  );
+  test(
+    'Android authentication failure explains approval and re-pairing',
+    () async {
+      fastRetries();
+      ble.statsFailure = StateError(
+        'GATT exception from MAC address XX:XX:XX:XX:XX:XX, status 5 (GATT_INSUF_AUTHENTICATION), type BleGattOperation{description=\'CHARACTERISTIC_READ\'}.',
+      );
+      await establish();
+      expect(c.pairingRecoveryRequired, true);
+      expect(c.error, contains('Approve this phone'));
+      expect(c.error, contains('pair again'));
+    },
+  );
   test('background refresh respects explicit Disconnect', () async {
     await establish();
     await c.disconnect();
@@ -500,6 +583,44 @@ void main() {
       expect(snapshots, isNotEmpty);
       expect(snapshots.contains(null), isFalse);
       expect(snapshots.last?.percent, 69);
+    },
+  );
+  test(
+    'a control left over from a dropped link does not leave the next link without readings',
+    () async {
+      c.dispose();
+      await ble.close();
+      final controlBle = FakeControlBle();
+      ble = controlBle;
+      c = CompanionController(
+        transport: controlBle,
+        rememberDevice: false,
+        retryDelay: (_) => const Duration(milliseconds: 40),
+      );
+      await establish();
+      expect(c.receivedCount, 1);
+      await until(() => controlBle.controlReads == 1);
+      expect(c.controlBusy, isTrue);
+
+      controlBle.links.add(LinkState.disconnected);
+      await until(() => controlBle.connections == 2);
+      controlBle.links.add(LinkState.connected);
+      await settle();
+      // The old control still owns the transport, so the first read waits.
+      expect(c.receivedCount, 1);
+      expect(c.notificationsRequested, isFalse);
+
+      controlBle.control!.completeError(StateError('Connection changed'));
+      // Well before the 1 s watchdog: the deferred read must replay itself.
+      for (var i = 0; i < 30 && !c.notificationsRequested; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(c.receivedCount, 2);
+      expect(c.notificationsRequested, isTrue);
+      expect(controlBle.subscriptions, 1);
+      // Recovered on the same link, not by the watchdog forcing a reconnect.
+      expect(controlBle.connections, 2);
+      expect(c.phase, CompanionPhase.connected);
     },
   );
 }

@@ -7,6 +7,7 @@ import 'file_transfer.dart';
 import 'adaptive_network.dart';
 import 'link_policy.dart';
 import 'diagnostics.dart';
+import 'network_endpoint.dart';
 
 /// One logical Thor session, with a retained BLE link and a verified network path.
 /// Explicit cancellation ends both paths. Network polling is foreground-only.
@@ -57,13 +58,26 @@ class AdaptiveTransport extends ChangeNotifier
       _logical = false,
       _tickBusy = false,
       _discovered = false;
-  int _epoch = 0, _rotation = 0;
+  int _epoch = 0;
+  bool _initialReadingReady = false, _firstStatsRead = false;
+  DateTime? _networkSearchAt;
   String? _device;
   FileConnection? _credentials;
+  List<String> get knownNetworkHosts =>
+      List.unmodifiable(_credentials?.hosts ?? const <String>[]);
+  Future<void>? _networkSearch;
   ControlNetwork? _network;
   String? networkHost;
   DateTime? _bootstrapAt;
   String networkStatus = 'Linking network access when available';
+  String? lastBluetoothError;
+  DateTime? lastBluetoothErrorAt;
+  void _recordBluetoothError(String stage, Object error) {
+    lastBluetoothError = redactConnectionDiagnostic('$stage: $error');
+    lastBluetoothErrorAt = DateTime.now();
+    logBle('Thor BLE $lastBluetoothError');
+  }
+
   List<int>? _reply;
   StreamController<LinkState>? _connection;
   final _live = StreamController<List<int>>.broadcast();
@@ -93,6 +107,7 @@ class AdaptiveTransport extends ChangeNotifier
     if (!_disposed) _radios.add(networkReady ? RadioState.ready : _actualRadio);
   }
 
+  RadioState get bluetoothRadio => _actualRadio;
   @override
   Stream<RadioState> get radio async* {
     yield networkReady ? RadioState.ready : _actualRadio;
@@ -263,8 +278,27 @@ class AdaptiveTransport extends ChangeNotifier
               _connection?.add(LinkState.connecting);
             }
           },
-          onError: (Object _) {
-            if (epoch == _epoch) _bleDown(epoch);
+          onError: (Object error) {
+            if (epoch != _epoch) return;
+            _recordBluetoothError('connection', error);
+            if (error is StaleServiceCache ||
+                error.toString().toLowerCase().contains(
+                  'peer removed pairing information',
+                )) {
+              _serviceRecoveryBlocked = true;
+              bleConnected = false;
+              _discovered = false;
+              if (networkReady) {
+                networkStatus =
+                    'Network connected · Bluetooth needs re-pairing';
+                _connected();
+              } else {
+                _connection?.addError(StaleServiceCache());
+              }
+              _changed();
+            } else {
+              _bleDown(epoch);
+            }
           },
           onDone: () {
             if (epoch == _epoch) _bleDown(epoch);
@@ -275,6 +309,8 @@ class AdaptiveTransport extends ChangeNotifier
   void _bleDown(int epoch) {
     bleConnected = false;
     _discovered = false;
+    // A re-attached link may need fresh encryption before its first read.
+    _firstStatsRead = false;
     unawaited(_bleLive?.cancel());
     _bleLive = null;
     policy.bluetooth(failed: true);
@@ -329,7 +365,8 @@ class AdaptiveTransport extends ChangeNotifier
           () => ble.discover(id).timeout(const Duration(seconds: 12)),
         );
         _serviceRecoveryAttempted = _serviceRecoveryBlocked = false;
-      } on StaleServiceCache {
+      } on StaleServiceCache catch (error) {
+        _recordBluetoothError('service discovery', error);
         // A broken Bluetooth cache must not take down a verified Wi-Fi path.
         if (!networkReady) rethrow;
         logBle('Thor BLE cache stale; preserving verified network connection');
@@ -337,9 +374,11 @@ class AdaptiveTransport extends ChangeNotifier
         _serviceRecoveryAttempted = true;
         _bleDown(_epoch);
         return;
+      } catch (error) {
+        _recordBluetoothError('service discovery', error);
+        rethrow;
       }
       _discovered = true;
-      await _bootstrap();
       await _attachLive();
     } else if (!networkReady) {
       throw StateError('No reachable Thor connection');
@@ -356,6 +395,7 @@ class AdaptiveTransport extends ChangeNotifier
             if (epoch == _epoch && !_disposed) _live.add(bytes);
           },
           onError: (Object e) {
+            if (epoch == _epoch) _recordBluetoothError('live subscription', e);
             if (epoch == _epoch && !networkReady) _live.addError(e);
           },
           onDone: () {
@@ -412,8 +452,8 @@ class AdaptiveTransport extends ChangeNotifier
       if (epoch != _epoch) return;
       // Preserve a user-selected VPN/hostname only for this same pinned Thor.
       final prior = _credentials;
-      _credentials = prior?.pin == reply.pin && prior?.preferredHost != null
-          ? reply.usingHost(prior!.preferredHost!)
+      _credentials = prior?.pin == reply.pin
+          ? reply.withManualHost(prior?.manualHost).retainingAddresses(prior)
           : reply;
       if (persist) {
         await fileBridge.invokeMethod('saveConnection', _credentials!.toMap());
@@ -431,8 +471,15 @@ class AdaptiveTransport extends ChangeNotifier
 
   /// Called after a deliberate Files/network link, preserving device association.
   Future<void> configure(FileConnection connection) async {
-    _credentials = connection;
+    if (_credentials?.token != connection.token ||
+        _credentials?.pin != connection.pin ||
+        _credentials?.manualHost != connection.manualHost) {
+      _dropNetwork('Checking network addresses');
+      _networkSearchAt = null;
+    }
+    _credentials = connection.retainingAddresses(_credentials);
     if (persist && _device != null) {
+      await fileBridge.invokeMethod('saveConnection', _credentials!.toMap());
       await SharedPreferencesAsync().setString(
         'adaptive_owner',
         jsonEncode({'id': _device, 'pin': connection.pin}),
@@ -453,7 +500,7 @@ class AdaptiveTransport extends ChangeNotifier
     _tickBusy = true;
     final epoch = _epoch;
     try {
-      if (bleConnected && _discovered && !_bleBusy) {
+      if (_initialReadingReady && bleConnected && _discovered && !_bleBusy) {
         try {
           final watch = Stopwatch()..start();
           final signal = await _bleOperation(() async {
@@ -480,7 +527,8 @@ class AdaptiveTransport extends ChangeNotifier
         }
       }
       if (epoch != _epoch) return;
-      if (bleConnected &&
+      if (_initialReadingReady &&
+          bleConnected &&
           _discovered &&
           !_bleBusy &&
           (_bootstrapAt == null ||
@@ -498,10 +546,23 @@ class AdaptiveTransport extends ChangeNotifier
           policy.network(watch.elapsed, DateTime.now());
         } catch (_) {
           if (epoch == _epoch) {
-            _dropNetwork('Network unreachable · using Bluetooth');
+            _dropNetwork('Network unreachable · checking alternate address');
+            await _findNetwork(epoch);
           }
         }
       } else {
+        await _findNetwork(epoch);
+      }
+      // A VPN may become available after a local connection. Verify it before
+      // replacing the working route; do not flap between local addresses.
+      if (_network != null &&
+          _credentials?.manualHost == null &&
+          networkHost != null &&
+          !isVpnAddress(networkHost!) &&
+          _credentials!.hosts.any(isVpnAddress) &&
+          (_networkSearchAt == null ||
+              DateTime.now().difference(_networkSearchAt!) >=
+                  const Duration(seconds: 30))) {
         await _findNetwork(epoch);
       }
       if (epoch != _epoch) return;
@@ -529,51 +590,78 @@ class AdaptiveTransport extends ChangeNotifier
     }
   }
 
-  Future<void> _findNetwork(int epoch) async {
+  Future<void> _findNetwork(int epoch) {
+    if (_networkSearch != null) return _networkSearch!;
+    late Future<void> task;
+    task = _selectNetwork(epoch).whenComplete(() {
+      if (identical(_networkSearch, task)) _networkSearch = null;
+    });
+    _networkSearch = task;
+    return task;
+  }
+
+  Future<bool> _restoreNetwork(int epoch) async {
+    if (_credentials == null ||
+        sleeping ||
+        !foreground ||
+        !automatic ||
+        epoch != _epoch) {
+      return false;
+    }
+    await _findNetwork(epoch);
+    return epoch == _epoch && networkReady;
+  }
+
+  Future<void> _selectNetwork(int epoch) async {
     final c = _credentials!;
-    final all = {
-      if (c.preferredHost != null) c.preferredHost!,
-      ...c.hosts,
-    }.toList();
-    if (all.isEmpty) return;
-    final hosts = <String>[all.first];
-    for (var i = 0; i < 3 && i < all.length - 1; i++) {
-      hosts.add(all[1 + (_rotation + i) % (all.length - 1)]);
-    }
-    _rotation += 3;
-    final candidates = await Future.wait(
-      hosts.map((host) async {
-        final n = networkFactory(c, host);
-        final watch = Stopwatch()..start();
-        try {
-          await n.probe();
-          return (n, host, watch.elapsed);
-        } catch (_) {
-          n.close();
-          return null;
-        }
-      }),
-    );
-    final good = candidates.nonNulls.toList()
-      ..sort((a, b) => a.$3.compareTo(b.$3));
-    if (epoch != _epoch || !foreground || !automatic || _disposed) {
-      for (final v in good) {
-        v.$1.close();
+    _networkSearchAt = DateTime.now();
+    final clients = <ControlNetwork>[];
+    try {
+      final winner = await selectNetworkEndpoint<ControlNetwork>(
+        c,
+        cancelled: () =>
+            epoch != _epoch ||
+            !identical(_credentials, c) ||
+            !foreground ||
+            !automatic ||
+            _disposed,
+        probe: (host) async {
+          final n = networkFactory(c, host);
+          clients.add(n);
+          try {
+            await n.probe().timeout(const Duration(milliseconds: 2400));
+            return n;
+          } catch (_) {
+            n.close();
+            rethrow;
+          }
+        },
+        close: (n) => n.close(),
+      );
+      final old = _network;
+      if (old != null &&
+          networkHost != null &&
+          !isVpnAddress(winner.host) &&
+          c.manualHost == null) {
+        winner.value.close();
+        return;
       }
-      return;
+      _network = winner.value;
+      networkHost = winner.host;
+      old?.close();
+      policy.network(winner.elapsed, DateTime.now());
+      networkStatus = isVpnAddress(winner.host)
+          ? 'VPN connected · Bluetooth retained'
+          : 'Local network connected · Bluetooth retained';
+    } catch (_) {
+      if (_network == null && epoch == _epoch) {
+        networkStatus = 'Network unavailable · Bluetooth retained';
+      }
+    } finally {
+      for (final n in clients) {
+        if (!identical(n, _network)) n.close();
+      }
     }
-    if (good.isEmpty) {
-      networkStatus = 'Network unavailable · Bluetooth retained';
-      return;
-    }
-    final winner = good.removeAt(0);
-    for (final v in good) {
-      v.$1.close();
-    }
-    _network = winner.$1;
-    networkHost = winner.$2;
-    policy.network(winner.$3, DateTime.now());
-    networkStatus = 'Verified encrypted network connection';
   }
 
   void _dropNetwork(String reason) {
@@ -598,12 +686,13 @@ class AdaptiveTransport extends ChangeNotifier
   Future<List<int>> _bleRead(String id) async {
     if (!bleConnected) throw StateError('Bluetooth is unavailable');
     final watch = Stopwatch()..start();
+    final timeout = id == statsId && !_firstStatsRead
+        ? const Duration(seconds: 45)
+        : const Duration(seconds: 2);
     try {
       final bytes = await _bleOperation(() async {
         try {
-          return await ble
-              .read(_device!, id)
-              .timeout(const Duration(seconds: 2));
+          return await ble.read(_device!, id).timeout(timeout);
         } catch (error) {
           if (!error.toString().contains(
             'Characteristic not found or discovered',
@@ -620,12 +709,26 @@ class AdaptiveTransport extends ChangeNotifier
           await _bleLive?.cancel();
           _bleLive = null;
           await _attachLive();
-          return ble.read(_device!, id).timeout(const Duration(seconds: 2));
+          return ble.read(_device!, id).timeout(timeout);
         }
       });
+      if (id == statsId) _firstStatsRead = true;
       policy.bluetooth(elapsed: watch.elapsed);
+      if (id == controlId && !_initialReadingReady) {
+        _initialReadingReady = true;
+        unawaited(_tick());
+      } else if (id == statsId && !_initialReadingReady) {
+        final epoch = _epoch;
+        Future<void>.delayed(const Duration(milliseconds: 500), () {
+          if (epoch == _epoch && !_initialReadingReady) {
+            _initialReadingReady = true;
+            unawaited(_tick());
+          }
+        });
+      }
       return bytes;
-    } catch (_) {
+    } catch (error) {
+      _recordBluetoothError('read ${_kind(id)}', error);
       policy.bluetooth(failed: true);
       rethrow;
     }
@@ -654,7 +757,7 @@ class AdaptiveTransport extends ChangeNotifier
       return await _bleRead(characteristic);
     } catch (_) {
       if (epoch != _epoch) rethrow;
-      if (!networkReady) await _tick();
+      if (!networkReady) await _restoreNetwork(epoch);
       if (epoch == _epoch && networkReady) {
         return characteristic == controlId
             ? _bleOperation(() => _network!.read('control'))
@@ -691,10 +794,16 @@ class AdaptiveTransport extends ChangeNotifier
       if (epoch != _epoch) rethrow;
       if (useNetwork) {
         _dropNetwork('Network interrupted · using Bluetooth');
-        _reply = await _bleCommand(bytes);
+        if (bleConnected) {
+          _reply = await _bleCommand(bytes);
+        } else if (await _restoreNetwork(epoch)) {
+          _reply = await _bleOperation(() => _network!.command(bytes));
+        } else {
+          rethrow;
+        }
       } else {
         policy.bluetooth(failed: true);
-        if (!networkReady) await _tick();
+        if (!networkReady) await _restoreNetwork(epoch);
         if (epoch != _epoch || !networkReady) rethrow;
         _reply = await _bleOperation(() => _network!.command(bytes));
       }
@@ -704,6 +813,17 @@ class AdaptiveTransport extends ChangeNotifier
       throw StateError('Connection changed');
     }
     _changed();
+  }
+
+  Future<void> writeBluetoothControl(String device, List<int> bytes) async {
+    if (device != _device || bytes.length > 180 || !bleConnected) {
+      throw StateError('Keep this phone in Bluetooth range to change Wi-Fi.');
+    }
+    final epoch = _epoch;
+    _reply = null;
+    final reply = await _bleCommand(bytes);
+    if (epoch != _epoch) throw StateError('Connection changed');
+    _reply = reply;
   }
 
   Future<void> forgetNetwork() async {
@@ -728,7 +848,10 @@ class AdaptiveTransport extends ChangeNotifier
     _discovered = false;
     _reply = null;
     _credentials = null;
+    _networkSearch = null;
     _bootstrapAt = null;
+    _initialReadingReady = _firstStatsRead = false;
+    _networkSearchAt = null;
     _serviceRecoveryAttempted = _serviceRecoveryBlocked = false;
     _dropNetwork('Disconnected');
     await _bleLive?.cancel();

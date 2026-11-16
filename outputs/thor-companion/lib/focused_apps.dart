@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'ui.dart';
 import 'app_icons.dart';
+import 'file_transfer.dart';
 
 class FocusedApps extends StatefulWidget {
   const FocusedApps({
@@ -9,11 +10,13 @@ class FocusedApps extends StatefulWidget {
     this.interactive,
     this.onOpenDrawer,
     this.device,
+    this.imageConnection,
   });
   final List<Map<String, dynamic>> apps;
   final bool? interactive;
   final ValueChanged<String>? onOpenDrawer;
   final String? device;
+  final Future<ThorFiles?> Function()? imageConnection;
   @override
   State<FocusedApps> createState() => _FocusedAppsState();
 }
@@ -23,7 +26,10 @@ class _FocusedAppsState extends State<FocusedApps> {
   @override
   void initState() {
     super.initState();
-    if (widget.device != null) icons = AppIconCache(widget.device!);
+    if (widget.device != null) {
+      icons = AppIconCache(widget.device!, network: widget.imageConnection)
+        ..addListener(refreshIcons);
+    }
   }
 
   @override
@@ -31,8 +37,15 @@ class _FocusedAppsState extends State<FocusedApps> {
     super.didUpdateWidget(old);
     if (old.device != widget.device) {
       icons?.close();
-      icons = widget.device == null ? null : AppIconCache(widget.device!);
+      icons = widget.device == null
+          ? null
+          : (AppIconCache(widget.device!, network: widget.imageConnection)
+              ..addListener(refreshIcons));
     }
+  }
+
+  void refreshIcons() {
+    if (mounted) setState(() {});
   }
 
   @override

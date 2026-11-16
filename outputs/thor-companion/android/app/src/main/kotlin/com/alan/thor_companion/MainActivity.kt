@@ -57,9 +57,32 @@ class MainActivity : FlutterActivity() {
     }
     override fun configureFlutterEngine(engine: FlutterEngine) {
         super.configureFlutterEngine(engine)
+        MethodChannel(engine.dartExecutor.binaryMessenger,"com.alan.thorCompanion/diagnostics").setMethodCallHandler { call,result -> ThorDiagnostics.call(this,call,result) }
+        MethodChannel(engine.dartExecutor.binaryMessenger,"com.alan.thorCompanion/wifi").setMethodCallHandler { call,result ->
+            if(call.method!="current") result.notImplemented()
+            else try {
+                val wifi=applicationContext.getSystemService(android.content.Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+                val name=wifi.connectionInfo.ssid?.removeSurrounding("\"")
+                result.success(if(name.isNullOrEmpty() || name=="<unknown ssid>") null else mapOf("name" to name,"event" to name))
+            } catch(e:Exception){result.success(null)}
+        }
         MethodChannel(engine.dartExecutor.binaryMessenger, "com.alan.thorCompanion/about").setMethodCallHandler { call, result ->
             when (call.method) {
                 "version" -> {val info=packageManager.getPackageInfo(packageName,0);result.success(mapOf("version" to info.versionName,"build" to info.longVersionCode.toString()))}
+                "appearanceIcon" -> try {
+                    val mode=call.arguments as? String
+                    val target=mapOf("dark" to "Dark", "light" to "Light", "clearPurple" to "Purple", "rainbow" to "Rainbow")[mode] ?: error("Unknown theme")
+                    val names=listOf(target)+listOf("Dark","Light","Purple","Rainbow").filter{it!=target}
+                    if(Build.VERSION.SDK_INT>=33) { val updates=names.map {name -> android.content.pm.PackageManager.ComponentEnabledSetting(android.content.ComponentName(this,"$packageName.Launcher$name"),if(name==target)android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED else android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,android.content.pm.PackageManager.DONT_KILL_APP)}
+                    packageManager.setComponentEnabledSettings(updates) }
+                    else names.forEach { name -> packageManager.setComponentEnabledSetting(android.content.ComponentName(this,"$packageName.Launcher$name"),if(name==target)android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED else android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,android.content.pm.PackageManager.DONT_KILL_APP) }
+                    result.success(null)
+                } catch(e:Exception){result.error("icon","Could not update the app icon.",null)}
+                "webOps" -> try {
+                    val url=android.net.Uri.parse(call.arguments as? String ?: "")
+                    require(url.scheme=="https"&&url.port==47184&&url.host!=null&&url.userInfo==null)
+                    startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,url));result.success(null)
+                } catch(e:Exception){result.error("open_link","Could not open Web Ops.",null)}
                 "github" -> try {startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,android.net.Uri.parse("https://github.com/Allie9Lives")));result.success(null)} catch (e: Exception) {result.error("open_link","Couldn’t open GitHub.",null)}
                 else -> result.notImplemented()
             }
@@ -76,12 +99,12 @@ class MainActivity : FlutterActivity() {
                 val id = call.argument<String>("id")
                 val title = call.argument<String>("title")
                 val body = call.argument<String>("body")
-                if (id !in listOf("low10", "low20", "charged80", "plugged", "unplugged", "closedLid", "test") || title == null || body == null || title.length >= 160 || body.length >= 500) {
+                if (id !in listOf("low10", "low20", "charged80", "plugged", "unplugged", "closedLid", "wifiChanged", "wifiLost", "wifiSignIn", "bluetoothLost", "bluetoothBack", "test") || title == null || body == null || title.length >= 160 || body.length >= 500) {
                     result.error("battery_alert", "Invalid battery notification.", null)
                 } else if (!manager.areNotificationsEnabled()) {
                     result.error("battery_alert_permission", "Allow notifications in system settings.", null)
                 } else {
-                    val positive = id in listOf("plugged", "charged80", "test")
+                    val positive = id in listOf("plugged", "charged80", "wifiChanged", "bluetoothBack", "test")
                     val channelId = if (positive) "thor_battery_positive_v2" else "thor_battery_warning_v2"
                     val channel = android.app.NotificationChannel(channelId, if (positive) "Battery status" else "Battery warnings", android.app.NotificationManager.IMPORTANCE_DEFAULT)
                     val sound = android.net.Uri.parse("android.resource://$packageName/raw/" + if (positive) "thor_positive" else "thor_warning")

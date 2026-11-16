@@ -1,17 +1,22 @@
 import 'package:flutter/material.dart';
 
 /// iOS owns the system bond; the app can guide removal, then scan afresh.
-Future<bool> showPairingRecovery(BuildContext context) async =>
+Future<bool> showPairingRecovery(
+  BuildContext context, {
+  bool hostAuthorization = false,
+}) async =>
     await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (context) => const _PairingRecovery(),
+      builder: (context) =>
+          _PairingRecovery(hostAuthorization: hostAuthorization),
     ) ??
     false;
 
 class _PairingRecovery extends StatefulWidget {
-  const _PairingRecovery();
+  const _PairingRecovery({required this.hostAuthorization});
+  final bool hostAuthorization;
   @override
   State<_PairingRecovery> createState() => _PairingRecoveryState();
 }
@@ -32,32 +37,53 @@ class _PairingRecoveryState extends State<_PairingRecovery> {
             style: Theme.of(context).textTheme.headlineSmall,
           ),
           const SizedBox(height: 12),
-          const Text(
-            'Your iPhone has outdated Bluetooth pairing information. Automatic retries are paused.',
+          Text(
+            widget.hostAuthorization
+                ? 'Bluetooth is paired. The Thor needs to approve this phone’s new identity.'
+                : 'Your iPhone has outdated Bluetooth pairing information. Automatic retries are paused.',
           ),
           const SizedBox(height: 24),
-          _step(
-            1,
-            'Forget the system pairing',
-            'Open iPhone Settings → Bluetooth. Tap ⓘ beside your Thor, then Forget This Device.',
-          ),
-          const SizedBox(height: 20),
-          _step(
-            2,
-            'Find your Thor again',
-            'Return here and scan. Choose the Thor from Nearby devices.',
-          ),
-          const SizedBox(height: 20),
-          _step(
-            3,
-            'Confirm pairing',
-            'Keep the Thor open with monitoring running. Accept any pairing prompts on both devices.',
-          ),
-          const SizedBox(height: 20),
+          if (widget.hostAuthorization) ...[
+            _step(
+              1,
+              'Approve on the Thor',
+              'Open Thor Monitor → Settings → Repair phone connection. Choose this iPhone and tap Approve.',
+            ),
+            const SizedBox(height: 20),
+            _step(
+              2,
+              'Try again',
+              'Keep monitoring on and the Thor open. Return here after approving your phone.',
+            ),
+            const SizedBox(height: 20),
+          ] else ...[
+            _step(
+              1,
+              'Forget the system pairing',
+              'Open iPhone Settings → Bluetooth. Tap ⓘ beside your Thor, then Forget This Device.',
+            ),
+            const SizedBox(height: 20),
+            _step(
+              2,
+              'Find your Thor again',
+              'Return here and scan. Choose the Thor from Nearby devices.',
+            ),
+            const SizedBox(height: 20),
+            _step(
+              3,
+              'Confirm pairing',
+              'Keep the Thor open with monitoring running. Accept any pairing prompts on both devices.',
+            ),
+            const SizedBox(height: 20),
+          ],
           CheckboxListTile(
             contentPadding: EdgeInsets.zero,
             controlAffinity: ListTileControlAffinity.leading,
-            title: const Text('I’ve forgotten the Thor in iPhone Settings'),
+            title: Text(
+              widget.hostAuthorization
+                  ? 'I’ve approved this phone on the Thor'
+                  : 'I’ve forgotten the Thor in iPhone Settings',
+            ),
             value: forgotten,
             onChanged: (value) => setState(() => forgotten = value ?? false),
           ),
@@ -66,8 +92,14 @@ class _PairingRecoveryState extends State<_PairingRecovery> {
             width: double.infinity,
             child: FilledButton.icon(
               onPressed: forgotten ? () => Navigator.pop(context, true) : null,
-              icon: const Icon(Icons.bluetooth_searching),
-              label: const Text('Scan for Thor'),
+              icon: Icon(
+                widget.hostAuthorization
+                    ? Icons.refresh
+                    : Icons.bluetooth_searching,
+              ),
+              label: Text(
+                widget.hostAuthorization ? 'Try again' : 'Scan for Thor',
+              ),
             ),
           ),
         ],
