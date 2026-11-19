@@ -36,13 +36,17 @@ The IPA is a development build and needs valid signing or re-signing to install.
 Current interface with sample readings.
 
 <table>
-<tr><th>Overview</th><th>Controls</th></tr>
-<tr><td><img src="docs/assets/client-overview.png" alt="Thor Companion overview with sample readings" width="280"></td><td><img src="docs/assets/client-controls.png" alt="Client tools and controls" width="280"></td></tr>
+<tr><th>Overview</th><th>Your devices</th></tr>
+<tr><td><img src="docs/assets/client-overview.png" alt="Thor Companion overview with sample readings" width="280"></td><td><img src="docs/assets/client-devices.png" alt="Device switcher listing an AYN Thor, a Retroid Pocket Classic and another handheld" width="280"></td></tr>
+<tr><th>Controls</th><th>Focused apps and storage</th></tr>
+<tr><td><img src="docs/assets/client-controls.png" alt="Controls with Find my, files, app drawer, FTP, Web Ops, keyboard, live view and screen capture" width="280"></td><td><img src="docs/assets/client-focused-apps.png" alt="Focused apps for both screens, internal storage type and microSD card size" width="280"></td></tr>
 <tr><th>Settings</th><th>Themes</th></tr>
-<tr><td><img src="docs/assets/client-settings.png" alt="Client settings tiles" width="280"></td><td><img src="docs/assets/client-themes.png" alt="Light, Dark, Clear Purple and Rainbow theme previews" width="280"></td></tr>
-<tr><th>Focused apps</th><th>Thor Monitor</th></tr>
-<tr><td><img src="docs/assets/client-focused-apps.png" alt="Top and bottom focused apps with centered icons" width="280"></td><td><img src="docs/assets/host-overview.png" alt="Thor Monitor overview" width="320"></td></tr>
+<tr><td><img src="docs/assets/client-settings.png" alt="Settings tiles" width="280"></td><td><img src="docs/assets/client-themes.png" alt="Light, Dark, Clear Purple and Rainbow theme previews" width="280"></td></tr>
+<tr><th>Thor Monitor on an AYN Thor</th><th>Thor Monitor on a Retroid Pocket Classic</th></tr>
+<tr><td><img src="docs/assets/host-overview.png" alt="Thor Monitor overview on an AYN Thor Max" width="320"></td><td><img src="docs/assets/host-retroid.png" alt="Thor Monitor overview on a Retroid Pocket Classic 6 GB" width="320"></td></tr>
 </table>
+
+Phone screenshots are rendered from the app's demo data by `test/readme_screens_test.dart`.
 
 ## Features
 
