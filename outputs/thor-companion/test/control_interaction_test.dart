@@ -30,7 +30,7 @@ void main() {
           ),
         ),
       );
-      await c.connect(const NearbyThor('thor', 'Thor', -50));
+      await c.connect(const NearbyThor('thor', 'Device', -50));
       ble.links.add(LinkState.connected);
       await tester.pumpAndSettle();
       ble.holdWrite = Completer<void>();
@@ -82,7 +82,7 @@ void main() {
           ),
         );
         await tester.pump();
-        await c.connect(const NearbyThor('thor', 'Thor', -50));
+        await c.connect(const NearbyThor('thor', 'Device', -50));
         ble.links.add(LinkState.connected);
         await tester.pump();
         await tester.pump();

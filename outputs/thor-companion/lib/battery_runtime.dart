@@ -30,7 +30,7 @@ BatteryRuntime estimateBatteryRuntime(
   if (current?.battery == null || current?.sourceTimeMs == null) {
     return const BatteryRuntime(
       'Waiting for readings',
-      'Connect to the Thor to collect battery readings.',
+      'Connect to the device to collect battery readings.',
     );
   }
   if (!fresh) {
@@ -52,7 +52,10 @@ BatteryRuntime estimateBatteryRuntime(
     );
   }
   if (current.battery! <= 0) {
-    return const BatteryRuntime('Battery empty', 'Connect the Thor to power.');
+    return const BatteryRuntime(
+      'Battery empty',
+      'Connect the device to power.',
+    );
   }
   final now = current.sourceTimeMs!;
   final index = <int, BatteryPoint>{

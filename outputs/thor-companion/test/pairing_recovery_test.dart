@@ -25,7 +25,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('Settings → Bluetooth'), findsOneWidget);
     expect(find.textContaining('Automatic retries are paused'), findsOneWidget);
-    final button = find.widgetWithText(FilledButton, 'Scan for Thor');
+    final button = find.widgetWithText(FilledButton, 'Scan for device');
     await tester.ensureVisible(button);
     expect(tester.widget<FilledButton>(button).onPressed, isNull);
     await tester.tap(find.byType(Checkbox));
@@ -61,7 +61,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('Repair phone connection'), findsOneWidget);
     expect(find.textContaining('Settings → Bluetooth'), findsNothing);
-    expect(find.text('Scan for Thor'), findsNothing);
+    expect(find.text('Scan for device'), findsNothing);
     final button = find.widgetWithText(FilledButton, 'Try again');
     await tester.ensureVisible(button);
     expect(tester.widget<FilledButton>(button).onPressed, isNull);

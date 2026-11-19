@@ -190,6 +190,11 @@ class DeviceHardware {
     this.ufsVersion,
     this.cpuName,
     this.gpuName,
+    this.hostVersion,
+    this.product,
+    this.family,
+    this.storageStandard,
+    this.screens = 2,
   });
 
   factory DeviceHardware.fromBytes(List<int> bytes) {
@@ -197,7 +202,15 @@ class DeviceHardware {
     return DeviceHardware(
       model: _text(j['model']),
       deviceName: _text(j['device_name']),
-      variant: const {'Lite', 'Base', 'Pro', 'Max'}.contains(j['variant'])
+      variant:
+          const {
+            'Lite',
+            'Base',
+            'Pro',
+            'Max',
+            '4 GB',
+            '6 GB',
+          }.contains(j['variant'])
           ? j['variant'] as String
           : null,
       socModel: _text(j['soc_model']),
@@ -210,6 +223,12 @@ class DeviceHardware {
       ufsVersion: _text(j['ufs_version']),
       cpuName: _text(j['cpu_name']),
       gpuName: _text(j['gpu_name']),
+      hostVersion: _text(j['host_version']),
+      product: _text(j['product']),
+      storageStandard: _text(j['storage_standard']),
+      family: _text(j['family']),
+      // Hosts before multi-device support are all two-screen Thors.
+      screens: j['screens'] == 1 ? 1 : 2,
     );
   }
 
@@ -222,15 +241,30 @@ class DeviceHardware {
       storageModel,
       ufsVersion,
       cpuName,
-      gpuName;
-  final int? ramBytes, dataBytes, storageCapacityBytes;
+      gpuName,
+      hostVersion,
+      product,
+      family,
+      storageStandard;
 
-  String? get displayModel => variant == null ? model : 'AYN Thor $variant';
+  /// "UFS 4.0", "eMMC 5.1"…; older hosts only report the UFS version.
+  String? get storageLabel =>
+      storageStandard ??
+      (const {'4.0', '3.1'}.contains(ufsVersion) ? 'UFS $ufsVersion' : null);
+  final int? ramBytes, dataBytes, storageCapacityBytes;
+  final int screens;
+
+  String? get displayModel {
+    final name = product ?? (variant == null ? model : 'AYN Thor');
+    return variant == null ? name : '$name $variant';
+  }
+
   String? get storageConfiguration => switch (storageCapacityBytes) {
     1000000000000 => '1 TB',
     512000000000 => '512 GB',
     256000000000 => '256 GB',
     128000000000 => '128 GB',
+    64000000000 => '64 GB',
     _ => null,
   };
 
@@ -253,6 +287,18 @@ class Heartbeat {
     return Heartbeat(sequence, battery);
   }
   final int sequence, battery;
+}
+
+/// Marketed card size (decimal GB/TB); cards report slightly less than the label.
+String? cardSize(int? bytes) {
+  if (bytes == null) return null;
+  for (final gb in const [8, 16, 32, 64, 128, 256, 512, 1000, 1500, 2000]) {
+    final n = gb * 1e9;
+    if (bytes >= n * .9 && bytes <= n * 1.01) {
+      return gb >= 1000 ? '${gb / 1000} TB'.replaceAll('.0 ', ' ') : '$gb GB';
+    }
+  }
+  return null;
 }
 
 String capacity(int? bytes, {int decimals = 0}) {

@@ -53,7 +53,7 @@ Future<NetworkEndpoint<T>> selectNetworkEndpoint<T>(
       fallback = null;
     } else {
       done.completeError(
-        StateError('Could not reach the Thor over Wi-Fi or VPN.'),
+        StateError('Could not reach the device over Wi-Fi or VPN.'),
       );
     }
   }

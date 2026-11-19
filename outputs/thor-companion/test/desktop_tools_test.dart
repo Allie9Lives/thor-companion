@@ -86,7 +86,7 @@ void main() {
         transport: ble,
         rememberDevice: false,
       );
-      await controller.connect(const NearbyThor('thor', 'Thor', -50));
+      await controller.connect(const NearbyThor('thor', 'Device', -50));
       ble.links.add(LinkState.connected);
       await Future<void>.delayed(const Duration(milliseconds: 30));
       final apps = await controller.installedApps();
@@ -119,7 +119,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     final ble = DesktopBle();
     final c = CompanionController(transport: ble, rememberDevice: false);
-    await c.connect(const NearbyThor('thor', 'Thor', -50));
+    await c.connect(const NearbyThor('thor', 'Device', -50));
     ble.links.add(LinkState.connected);
     await tester.pump();
     await tester.pump();
@@ -216,7 +216,7 @@ void main() {
     (tester) async {
       final ble = DesktopBle();
       final c = CompanionController(transport: ble, rememberDevice: false);
-      await c.connect(const NearbyThor('thor', 'Thor', -50));
+      await c.connect(const NearbyThor('thor', 'Device', -50));
       ble.links.add(LinkState.connected);
       await tester.pump();
       await tester.pump();

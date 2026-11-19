@@ -39,7 +39,7 @@ class _ServiceStatusStripState extends State<ServiceStatusStrip> {
         builder: (context) => AlertDialog(
           title: const Text('Pause monitoring?'),
           content: const Text(
-            'Readings and battery history will pause. Remote controls stay available. This does not put the Thor to sleep.',
+            'Readings and battery history will pause. Remote controls stay available. This does not put the device to sleep.',
           ),
           actions: [
             TextButton(

@@ -80,7 +80,7 @@ class _AppsPageState extends State<AppsPage> {
           openKnown = false;
           openError = e is StateError
               ? e.message
-              : 'Open-app status unavailable. Check the Thor connection.';
+              : 'Open-app status unavailable. Check the device connection.';
         });
       }
     } finally {
@@ -111,7 +111,7 @@ class _AppsPageState extends State<AppsPage> {
         setState(
           () => error = e is StateError
               ? e.message
-              : 'Couldn’t load apps. Check the Thor connection.',
+              : 'Couldn’t load apps. Check the device connection.',
         );
       }
     } finally {
@@ -197,7 +197,7 @@ class _AppsPageState extends State<AppsPage> {
         setState(
           () => error = e is StateError
               ? e.message
-              : 'Couldn’t open the app. Check the Thor connection.',
+              : 'Couldn’t open the app. Check the device connection.',
         );
       }
     } finally {
@@ -313,7 +313,7 @@ class _AppsPageState extends State<AppsPage> {
         .toList();
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Apps on your Thor'),
+        title: const Text('Apps on your device'),
         actions: [
           IconButton(
             tooltip: 'Refresh app list',
@@ -325,36 +325,37 @@ class _AppsPageState extends State<AppsPage> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          surface(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'Open apps on',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 12),
-                SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(
-                      value: 'top',
-                      icon: Icon(Icons.monitor),
-                      label: Text('Top'),
-                    ),
-                    ButtonSegment(
-                      value: 'bottom',
-                      icon: Icon(Icons.monitor_outlined),
-                      label: Text('Bottom'),
-                    ),
-                  ],
-                  selected: {target},
-                  onSelectionChanged: active != null
-                      ? null
-                      : (choice) => setState(() => target = choice.single),
-                ),
-              ],
+          if (!widget.controller.singleScreen)
+            surface(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Open apps on',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 12),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(
+                        value: 'top',
+                        icon: Icon(Icons.monitor),
+                        label: Text('Top'),
+                      ),
+                      ButtonSegment(
+                        value: 'bottom',
+                        icon: Icon(Icons.monitor_outlined),
+                        label: Text('Bottom'),
+                      ),
+                    ],
+                    selected: {target},
+                    onSelectionChanged: active != null
+                        ? null
+                        : (choice) => setState(() => target = choice.single),
+                  ),
+                ],
+              ),
             ),
-          ),
           const SizedBox(height: 16),
           TextField(
             controller: search,

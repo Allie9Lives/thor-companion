@@ -10,6 +10,8 @@ public final class ControlAllowlistTest {
         equal(ControlHelper.setting("fan",4),"fan_mode");
         equal(ControlHelper.setting("volume",15),"secondary_screen_volume_level");
         equal(ControlHelper.setting("bypass",1),"is_charging_separation");
+        equal(ControlHelper.setting("brightness",255),"screen_brightness");
+        reject("brightness",0);reject("brightness",256);
         reject("fan",3);reject("hz",90);reject("hz",144);reject("volume",16);
         reject("bypass",2);reject("performance",3);reject("focus",-1);
         reject("adb_enabled",1);reject("../../arbitrary",1);reject("volume;reboot",1);

@@ -9,7 +9,7 @@ FileConnection credentials({String? manual, List<String>? hosts}) =>
       port: 47183,
       pin: 'a' * 64,
       token: 'b' * 64,
-      name: 'Thor',
+      name: 'Device',
       manualHost: manual,
     );
 void main() {

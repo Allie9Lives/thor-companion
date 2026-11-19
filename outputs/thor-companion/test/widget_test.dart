@@ -62,7 +62,7 @@ void main() {
           palette.brandColor,
           choice == AppAppearance.clearPurple
               ? const Color(0xFF6B5C87)
-              : const Color(0xFF285BC5),
+              : const Color(0xFF224CA5),
         );
         expect(
           Theme.of(tester.element(find.byType(Scaffold).first)).brightness,
@@ -300,4 +300,27 @@ void main() {
       c.dispose();
     });
   }
+  testWidgets('errors float, take no page space and can be dismissed', (
+    tester,
+  ) async {
+    final c = CompanionController.demo();
+    await tester.pumpWidget(ThorCompanionApp(controller: c));
+    await tester.pumpAndSettle();
+    final before = tester.getTopLeft(find.text('microSD card'));
+    c.error = 'Bluetooth pairing is out of date.';
+    c.notifyListeners();
+    await tester.pumpAndSettle();
+    expect(find.text('Bluetooth pairing is out of date.'), findsOneWidget);
+    expect(tester.getTopLeft(find.text('microSD card')), before);
+    await tester.tap(find.byTooltip('Dismiss'));
+    await tester.pumpAndSettle();
+    expect(find.text('Bluetooth pairing is out of date.'), findsNothing);
+    c.error = 'A different problem.';
+    c.notifyListeners();
+    await tester.pumpAndSettle();
+    expect(find.text('A different problem.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    c.dispose();
+  });
 }

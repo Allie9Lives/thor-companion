@@ -6,6 +6,7 @@ import 'package:thor_companion/adaptive_network.dart';
 import 'package:thor_companion/ble_transport.dart';
 import 'package:thor_companion/link_policy.dart';
 import 'package:thor_companion/companion_controller.dart';
+import 'package:thor_companion/file_transfer.dart';
 
 class Host {
   bool reachable = false, loseAck = false;
@@ -32,13 +33,14 @@ class TestBle implements BleTransport, ControlTransport, SignalTransport {
   Completer<List<int>>? statsGate;
   int bootstraps = 0;
   bool missingCharacteristic = false;
+  bool unreachable = false;
   int discoveries = 0;
   int signal = -88, cancellations = 0, opens = 0;
   List<int> reply = [];
   int sequence = 0;
   List<int> data(String c) => utf8.encode(
     c == hardwareId
-        ? '{"model":"AYN Thor","device_name":"Thor"}'
+        ? '{"model":"AYN Thor","device_name":"device"}'
         : jsonEncode({
             'seq': ++sequence,
             'ts_ms': DateTime.now().millisecondsSinceEpoch,
@@ -60,7 +62,11 @@ class TestBle implements BleTransport, ControlTransport, SignalTransport {
         cancellations++;
         await sub.cancel();
       };
-      scheduleMicrotask(() => out.add(LinkState.connected));
+      scheduleMicrotask(
+        () => unreachable
+            ? out.addError(StateError('Bluetooth is off'))
+            : out.add(LinkState.connected),
+      );
     });
   }
 
@@ -152,32 +158,39 @@ Future<void> until(bool Function() condition) async {
 }
 
 void main() {
-  test('routing requires verified network, weak signal and hysteresis', () {
+  test('verified Wi-Fi is the primary route, Bluetooth the fallback', () {
     final p = LinkPolicy(), now = DateTime(2026);
-    p.bluetooth(signal: -90);
-    p.bluetooth(signal: -90);
+    p.bluetooth(signal: -60, elapsed: const Duration(milliseconds: 10));
     expect(p.choose(now, bleAvailable: true), ControlRoute.bluetooth);
-    p.network(const Duration(milliseconds: 20), now);
-    expect(p.choose(now, bleAvailable: true), ControlRoute.bluetooth);
-    p.network(const Duration(milliseconds: 20), now);
+    p.network(const Duration(milliseconds: 80), now);
+    expect(
+      p.choose(now, bleAvailable: true),
+      ControlRoute.bluetooth,
+      reason: 'one probe is not enough to leave a live Bluetooth link',
+    );
+    p.network(const Duration(milliseconds: 80), now);
     expect(p.choose(now, bleAvailable: true), ControlRoute.network);
     for (var i = 0; i < 4; i++) {
-      p.bluetooth(signal: -60, elapsed: const Duration(milliseconds: 10));
+      p.bluetooth(signal: -50, elapsed: const Duration(milliseconds: 5));
     }
     expect(
       p.choose(now.add(const Duration(seconds: 2)), bleAvailable: true),
       ControlRoute.network,
+      reason: 'a strong Bluetooth link does not take over from working Wi-Fi',
     );
     p.networkFailed();
     expect(p.choose(now, bleAvailable: true), ControlRoute.bluetooth);
-  });
-  test('responsiveness can switch without a weak RSSI reading', () {
-    final p = LinkPolicy(), now = DateTime(2026);
-    for (var i = 0; i < 3; i++) {
-      p.bluetooth(elapsed: const Duration(milliseconds: 600), signal: -60);
-      p.network(const Duration(milliseconds: 40), now);
-    }
-    expect(p.choose(now, bleAvailable: true), ControlRoute.network);
+    p.network(const Duration(milliseconds: 80), now);
+    expect(
+      p.choose(now, bleAvailable: false),
+      ControlRoute.network,
+      reason: 'without Bluetooth any verified network is used',
+    );
+    expect(
+      p.choose(now.add(const Duration(seconds: 20)), bleAvailable: true),
+      ControlRoute.bluetooth,
+      reason: 'a stale network probe falls back to Bluetooth',
+    );
   });
   late Host host;
   late TestBle ble;
@@ -210,6 +223,50 @@ void main() {
     return states;
   }
 
+  test(
+    'saved Wi-Fi/VPN path connects with Bluetooth off and survives background',
+    () async {
+      host.reachable = true;
+      FileConnection? saved;
+      link.dispose();
+      link = AdaptiveTransport(
+        ble,
+        persist: false,
+        interval: const Duration(milliseconds: 20),
+        networkFactory: (c, h) => TestNetwork(host),
+        savedConnection: (_) async => saved,
+      );
+      await start();
+      await until(() => link.networkReady);
+      saved = FileConnection.fromMap({
+        'hosts': ['thor'],
+        'port': 47183,
+        'pin': 'a' * 64,
+        'token': 'b' * 64,
+      });
+      expect(await link.hasSavedNetwork('thor-id'), true);
+      await session!.cancel();
+      ble.unreachable = true;
+      final states = <LinkState>[];
+      session = link.connect('thor-id').listen(states.add);
+      await until(() => states.contains(LinkState.connected));
+      expect(link.bleConnected, false);
+      expect(link.route, ControlRoute.network);
+      expect(
+        jsonDecode(
+          utf8.decode(await link.read('thor-id', statsId)),
+        )['battery_pct'],
+        70,
+      );
+      link.setForeground(false);
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(states, isNot(contains(LinkState.disconnected)));
+      link.setForeground(true);
+      await until(() => link.networkReady);
+      host.reachable = false;
+      await until(() => states.contains(LinkState.disconnected));
+    },
+  );
   test(
     'initial discovery and battery read do not wait for optional network bootstrap',
     () async {
@@ -248,7 +305,7 @@ void main() {
         batteryPublisher: (_) async {},
       );
       try {
-        await c.connect(const NearbyThor('thor-id', 'Thor', -60));
+        await c.connect(const NearbyThor('thor-id', 'Device', -60));
         await until(() => c.notificationsRequested);
         ble.links.addError(StateError('Peer removed pairing information'));
         await until(() => c.pairingRecoveryRequired);
@@ -420,7 +477,7 @@ void main() {
         batteryPublisher: (_) async {},
       );
       try {
-        await c.connect(const NearbyThor('thor-id', 'Thor', -88));
+        await c.connect(const NearbyThor('thor-id', 'Device', -88));
         await until(() => c.notificationsRequested);
         await until(() => link.route == ControlRoute.network);
         ble.links.add(LinkState.disconnected);

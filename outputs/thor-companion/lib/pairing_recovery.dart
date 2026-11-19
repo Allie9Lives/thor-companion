@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'design_components.dart';
 
 /// iOS owns the system bond; the app can guide removal, then scan afresh.
 Future<bool> showPairingRecovery(
@@ -7,6 +8,7 @@ Future<bool> showPairingRecovery(
 }) async =>
     await showModalBottomSheet<bool>(
       context: context,
+      sheetAnimationStyle: thorSheetAnimation(context),
       isScrollControlled: true,
       showDragHandle: true,
       builder: (context) =>
@@ -39,40 +41,40 @@ class _PairingRecoveryState extends State<_PairingRecovery> {
           const SizedBox(height: 12),
           Text(
             widget.hostAuthorization
-                ? 'Bluetooth is paired. The Thor needs to approve this phone’s new identity.'
+                ? 'Bluetooth is paired. The device needs to approve this phone’s new identity.'
                 : 'Your iPhone has outdated Bluetooth pairing information. Automatic retries are paused.',
           ),
           const SizedBox(height: 24),
           if (widget.hostAuthorization) ...[
             _step(
               1,
-              'Approve on the Thor',
+              'Approve on the device',
               'Open Thor Monitor → Settings → Repair phone connection. Choose this iPhone and tap Approve.',
             ),
             const SizedBox(height: 20),
             _step(
               2,
               'Try again',
-              'Keep monitoring on and the Thor open. Return here after approving your phone.',
+              'Keep monitoring on and the device open. Return here after approving your phone.',
             ),
             const SizedBox(height: 20),
           ] else ...[
             _step(
               1,
               'Forget the system pairing',
-              'Open iPhone Settings → Bluetooth. Tap ⓘ beside your Thor, then Forget This Device.',
+              'Open iPhone Settings → Bluetooth. Tap ⓘ beside your device, then Forget This Device.',
             ),
             const SizedBox(height: 20),
             _step(
               2,
-              'Find your Thor again',
-              'Return here and scan. Choose the Thor from Nearby devices.',
+              'Find your device again',
+              'Return here and scan. Choose the device from Nearby devices.',
             ),
             const SizedBox(height: 20),
             _step(
               3,
               'Confirm pairing',
-              'Keep the Thor open with monitoring running. Accept any pairing prompts on both devices.',
+              'Keep the device open with monitoring running. Accept any pairing prompts on both devices.',
             ),
             const SizedBox(height: 20),
           ],
@@ -81,8 +83,8 @@ class _PairingRecoveryState extends State<_PairingRecovery> {
             controlAffinity: ListTileControlAffinity.leading,
             title: Text(
               widget.hostAuthorization
-                  ? 'I’ve approved this phone on the Thor'
-                  : 'I’ve forgotten the Thor in iPhone Settings',
+                  ? 'I’ve approved this phone on the device'
+                  : 'I’ve forgotten the device in iPhone Settings',
             ),
             value: forgotten,
             onChanged: (value) => setState(() => forgotten = value ?? false),
@@ -98,7 +100,7 @@ class _PairingRecoveryState extends State<_PairingRecovery> {
                     : Icons.bluetooth_searching,
               ),
               label: Text(
-                widget.hostAuthorization ? 'Try again' : 'Scan for Thor',
+                widget.hostAuthorization ? 'Try again' : 'Scan for device',
               ),
             ),
           ),

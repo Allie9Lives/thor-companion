@@ -65,7 +65,7 @@ final class WebOps {
    if(!enabled(c)){fail(out,503,"Web Ops is stopped");return;}
    try{r=WebHttp.read(in);}catch(Exception e){fail(out,400,"Invalid request");return;}deadline.cancel(false);
    String origin="https://"+r.host;
-   if(!matchesHost(ip,r.host)){fail(out,421,"Use the address shown on the Thor");return;}
+   if(!matchesHost(ip,r.host)){fail(out,421,"Use the address shown on the device");return;}
    if(!r.header("origin").isEmpty()&&!r.header("origin").equals(origin)){fail(out,403,"Origin rejected");return;}
    if(!r.method.equals("GET")&&!r.method.equals("HEAD")&&!r.header("origin").equals(origin)){fail(out,403,"Origin required");return;}
    if(r.method.equals("GET")&&r.path.equals("/appearance.json")){json(out,200,new JSONObject().put("theme",HostTheme.name(c)),null);return;}
@@ -80,7 +80,7 @@ final class WebOps {
     JSONObject body=new JSONObject(new String(r.body(in,4096),StandardCharsets.UTF_8));String user=body.optString("username");char[] password=body.optString("password").toCharArray();boolean ok=false;String revision=prefs(c).getString("revision","");
     try{if(password.length<=128&&configured(c))ok=WebSessions.verify(user,password,prefs(c).getString("user",""),Base64.getDecoder().decode(prefs(c).getString("salt","")),Base64.getDecoder().decode(prefs(c).getString("hash","")));}finally{Arrays.fill(password,'\0');}
     if(!ok){fail(out,401,"Incorrect username or password");return;}
-    WebSessions.Session session;synchronized(sessions){if(!enabled(c)||!revision.equals(prefs(c).getString("revision",""))){fail(out,401,"Login changed. Try again.");return;}session=sessions.create(origin,SystemClock.elapsedRealtime());}if(session==null){fail(out,429,"End another browser session on the Thor first");return;}
+    WebSessions.Session session;synchronized(sessions){if(!enabled(c)||!revision.equals(prefs(c).getString("revision",""))){fail(out,401,"Login changed. Try again.");return;}session=sessions.create(origin,SystemClock.elapsedRealtime());}if(session==null){fail(out,429,"End another browser session on the device first");return;}
     session.label=WebSessions.clientLabel(r.header("user-agent"));MonitorService.restChanged();json(out,200,new JSONObject().put("csrf",session.csrf),"Set-Cookie: __Host-thor_web="+session.cookie+"; Path=/; Secure; HttpOnly; SameSite=Strict\r\n");return;
    }
    WebSessions.Session session=sessions.get(WebHttp.cookie(r),origin,now);if(session==null){fail(out,401,"Sign in to Web Ops");return;}
@@ -98,7 +98,7 @@ final class WebOps {
    if(r.path.equals("/api/certificate")&&r.method.equals("GET")){WebHttp.bytes(out,200,"application/x-x509-ca-cert",WebTls.root(c).getEncoded(),"Content-Disposition: attachment; filename=Thor-Web-Ops-CA.crt\r\n");return;}
    if(r.path.equals("/api/capture")&&r.method.equals("POST")){
     int mode=Integer.parseInt(r.query.getOrDefault("mode","-1"));if(mode<0||mode>2)throw new IllegalArgumentException("Choose Top, Bottom or Both");
-    if(!new ThorControls(c).helperReady())throw new IllegalStateException("Set up Controls recovery on the Thor first");
+    if(!new ThorControls(c).helperReady())throw new IllegalStateException("Set up Controls recovery on the device first");
     if(!captureBusy.compareAndSet(false,true)){fail(out,409,"A screenshot is already being captured");return;}
     try{WebHttp.bytes(out,200,"application/x-thor-screenshot",new ThorControls(c).captureImage(mode),null);}finally{captureBusy.set(false);}return;
    }
@@ -128,7 +128,7 @@ final class WebOps {
    }
    if(r.path.equals("/api/control")&&r.method.equals("POST")){
     byte[] command=r.body(in,180);JSONObject body=new JSONObject(new String(command,StandardCharsets.UTF_8));
-    if(!Arrays.asList("find","power","brightness","volume","hz","fan","performance","focus","bypass","vibration","style","clean","led","text","key","app_open","app_close","ftp_start","ftp_stop").contains(body.optString("set")))throw new IllegalArgumentException("Unknown control");
+    if(!Arrays.asList("find","power","brightness","volume","hz","fan","performance","focus","bypass","vibration","style","clean","led","text","key","app_open","app_close","ftp_start","ftp_stop","ftp_keep_on","ftp_keep_off").contains(body.optString("set")))throw new IllegalArgumentException("Unknown control");
     WebHttp.bytes(out,200,"application/json; charset=utf-8",MonitorService.networkControl(command),null);return;
    }
    if(r.path.equals("/api/controls")&&r.method.equals("GET")){WebHttp.bytes(out,200,"application/json; charset=utf-8",MonitorService.networkRead("control"),null);return;}
@@ -148,7 +148,7 @@ final class WebOps {
     json(out,200,MonitorService.webState(),null);return;
    }
    fail(out,404,"Not found");
-   }catch(Exception e){if(out.started)try{Telemetry.log(c,"web_stream_failed",new JSONObject().put("error",e.getClass().getSimpleName()));}catch(Exception ignored){}if(!out.started)fail(out,e instanceof WebFiles.Conflict?409:e instanceof FileNotFoundException?404:e instanceof SecurityException?403:e instanceof IllegalArgumentException||e instanceof JSONException?400:503,e instanceof FileNotFoundException?"File or folder unavailable":e instanceof SecurityException?"This folder is protected or access was revoked.":e instanceof IllegalStateException||e instanceof IllegalArgumentException?String.valueOf(e.getMessage()):e instanceof JSONException?"Invalid request":"Thor is unavailable. Check monitoring on the device.");}
+   }catch(Exception e){if(out.started)try{Telemetry.log(c,"web_stream_failed",new JSONObject().put("error",e.getClass().getSimpleName()));}catch(Exception ignored){}if(!out.started)fail(out,e instanceof WebFiles.Conflict?409:e instanceof FileNotFoundException?404:e instanceof SecurityException?403:e instanceof IllegalArgumentException||e instanceof JSONException?400:503,e instanceof FileNotFoundException?"File or folder unavailable":e instanceof SecurityException?"This folder is protected or access was revoked.":e instanceof IllegalStateException||e instanceof IllegalArgumentException?String.valueOf(e.getMessage()):e instanceof JSONException?"Invalid request":"The device is unavailable. Check monitoring on the device.");}
   }catch(Exception ignored){}finally{sockets.remove(socket);}
  }
 }

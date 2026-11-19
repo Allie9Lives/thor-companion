@@ -78,10 +78,10 @@
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array><string>com.alan.thorCompanion.refresh</string></array>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Save screenshots and recordings from your Thor to Photos on this iPhone.</string>
+	<string>Save screenshots and recordings from your device to Photos on this iPhone.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Connect securely to your Thor over Wi-Fi or an existing VPN for device controls, readings, screenshots and files you select.</string>
+	<string>Connect securely to your device over Wi-Fi or an existing VPN for device controls, readings, screenshots and files you select.</string>
 </dict>
 </plist>

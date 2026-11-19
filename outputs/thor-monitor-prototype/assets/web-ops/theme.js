@@ -8,5 +8,5 @@
  const resolved=themes.includes(choice)?choice:host;
  document.documentElement.dataset.theme=resolved;
  const color=document.querySelector('meta[name=theme-color]');
- if(color)color.content=({dark:'#111113',light:'#f2f2f5',clearPurple:'#1d1825',rainbow:'#fafbfd'})[resolved];
+ if(color)color.content=({dark:'#111113',light:'#f2f2f5',clearPurple:'#1d1825',rainbow:'#c6c4c0'})[resolved];
 })();

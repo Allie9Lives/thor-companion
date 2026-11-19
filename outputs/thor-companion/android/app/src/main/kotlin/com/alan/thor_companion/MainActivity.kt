@@ -11,7 +11,7 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private fun saveRecording(call: io.flutter.plugin.common.MethodCall, result: MethodChannel.Result) {
         val paths = call.argument<List<String>>("paths")
-        val screen = call.argument<String>("screen")
+        val screen = call.argument<String>("screen") ?: ""
         val root = java.io.File(cacheDir,"thor-transfers").canonicalPath + java.io.File.separator
         if (Build.VERSION.SDK_INT < 29 || screen !in listOf("top","bottom","both") || paths == null || paths.size != (if (screen == "both") 2 else 1)) {
             result.error("recording", "Invalid recording files.", null); return
@@ -20,11 +20,26 @@ class MainActivity : FlutterActivity() {
         if (clips.any { !it.canonicalPath.startsWith(root) || !it.isFile || it.extension != "mp4" || it.length() !in 128..(512L*1024*1024) }) {
             result.error("recording", "Recording cache is unavailable. Download again.", null); return
         }
+        if (screen == "both") {
+            val offsets = call.argument<List<Double>>("offsets") ?: listOf(0.0, 0.0)
+            val combined = java.io.File(cacheDir, "thor-transfers/Thor-both-${java.util.UUID.randomUUID()}.mp4")
+            composer = ThorVideoComposer.compose(this, clips, offsets, call.argument<Int>("fps") ?: 30, combined) { error ->
+                composer = null
+                if (error != null) result.error("recording_combine", "Could not combine the two screens. Try saving again.", null)
+                else storeRecordings(listOf(combined), screen, result) { combined.delete() }
+            }
+            return
+        }
+        storeRecordings(clips, screen, result) {}
+    }
+    // Keeps the Media3 export alive until it reports back.
+    private var composer: androidx.media3.transformer.Transformer? = null
+    private fun storeRecordings(clips: List<java.io.File>, screen: String, result: MethodChannel.Result, after: () -> Unit) {
         Thread {
             val inserted = mutableListOf<android.net.Uri>()
             try {
                 clips.forEachIndexed { index, file ->
-                    val label = if (screen == "both") if (index == 0) "top" else "bottom" else screen
+                    val label = if (clips.size == 2) if (index == 0) "top" else "bottom" else screen
                     val values = ContentValues().apply {
                         put(MediaStore.Video.Media.DISPLAY_NAME,"Thor-$label-${System.currentTimeMillis()}.mp4")
                         put(MediaStore.Video.Media.MIME_TYPE,"video/mp4")
@@ -40,14 +55,20 @@ class MainActivity : FlutterActivity() {
             } catch (e: Exception) {
                 for (uri in inserted) contentResolver.delete(uri,null,null)
                 runOnUiThread {result.error("recording_save","Could not save recording to Photos. Check available storage.",null)}
+            } finally {
+                after()
             }
         }.start()
     }
     private val files by lazy { ThorFileBridge(this) }
+    private val liveVideos = HashMap<Int, ThorLiveVideo>()
+    override fun cleanUpFlutterEngine(engine: FlutterEngine) { liveVideos.values.forEach { it.dispose() }; liveVideos.clear(); super.cleanUpFlutterEngine(engine) }
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
         if (!files.activityResult(requestCode, resultCode, data)) super.onActivityResult(requestCode, resultCode, data)
     }
     private var alertPermission: MethodChannel.Result? = null
+    private val alertHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val pendingAlerts = HashMap<String, Runnable>()
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 8221) {
@@ -57,6 +78,14 @@ class MainActivity : FlutterActivity() {
     }
     override fun configureFlutterEngine(engine: FlutterEngine) {
         super.configureFlutterEngine(engine)
+        val liveChannel = MethodChannel(engine.dartExecutor.binaryMessenger, "com.alan.thorCompanion/live")
+        liveVideos.values.forEach { it.dispose() }
+        liveVideos.clear()
+        liveChannel.setMethodCallHandler { call, result ->
+            val id = call.argument<Int>("id") ?: -1
+            if (id !in 0..1) { result.error("live", "Choose top or bottom", null); return@setMethodCallHandler }
+            liveVideos.getOrPut(id) { ThorLiveVideo(engine.renderer, liveChannel, id) }.call(call.method, call.argument<ByteArray>("data"), result)
+        }
         MethodChannel(engine.dartExecutor.binaryMessenger,"com.alan.thorCompanion/diagnostics").setMethodCallHandler { call,result -> ThorDiagnostics.call(this,call,result) }
         MethodChannel(engine.dartExecutor.binaryMessenger,"com.alan.thorCompanion/wifi").setMethodCallHandler { call,result ->
             if(call.method!="current") result.notImplemented()
@@ -84,6 +113,7 @@ class MainActivity : FlutterActivity() {
                     startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,url));result.success(null)
                 } catch(e:Exception){result.error("open_link","Could not open Web Ops.",null)}
                 "github" -> try {startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,android.net.Uri.parse("https://github.com/Allie9Lives")));result.success(null)} catch (e: Exception) {result.error("open_link","Couldn’t open GitHub.",null)}
+                "releases" -> try {startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,android.net.Uri.parse("https://github.com/Allie9Lives/thor-companion/releases/latest")));result.success(null)} catch (e: Exception) {result.error("open_link","Couldn’t open GitHub.",null)}
                 else -> result.notImplemented()
             }
         }
@@ -95,6 +125,9 @@ class MainActivity : FlutterActivity() {
                     if (alertPermission != null) result.error("battery_alert_permission", "A permission request is already open.", null)
                     else { alertPermission = result; requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 8221) }
                 } else result.success(manager.areNotificationsEnabled())
+            } else if (call.method == "cancel") {
+                (call.arguments as? String)?.let { pendingAlerts.remove(it)?.let(alertHandler::removeCallbacks) }
+                result.success(null)
             } else if (call.method == "show") {
                 val id = call.argument<String>("id")
                 val title = call.argument<String>("title")
@@ -114,7 +147,16 @@ class MainActivity : FlutterActivity() {
                     val pending = android.app.PendingIntent.getActivity(this, 31, intent, android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT)
                     val notification = android.app.Notification.Builder(this, channelId).setSmallIcon(android.R.drawable.ic_lock_idle_low_battery)
                         .setContentTitle(title).setContentText(body).setStyle(android.app.Notification.BigTextStyle().bigText(body)).setAutoCancel(true).setContentIntent(pending).build()
-                    try { manager.notify(id.hashCode(), notification); result.success(null) }
+                    val delay = (call.argument<String>("delay")?.toLongOrNull() ?: 0L).coerceIn(0L, 600L)
+                    if (delay > 0) {
+                        // shortcut: in-process delay, lost if Android kills the app first; use AlarmManager if that shows up.
+                        val key = id!!  // validated against the allowlist above
+                        pendingAlerts.remove(key)?.let(alertHandler::removeCallbacks)
+                        val post = Runnable { pendingAlerts.remove(key); try { manager.notify(key.hashCode(), notification) } catch (_: SecurityException) {} }
+                        pendingAlerts[key] = post
+                        alertHandler.postDelayed(post, delay * 1000)
+                        result.success(null)
+                    } else try { manager.notify(id.hashCode(), notification); result.success(null) }
                     catch (e: SecurityException) { result.error("battery_alert_permission", "Allow notifications in system settings.", null) }
                 }
             } else result.notImplemented()

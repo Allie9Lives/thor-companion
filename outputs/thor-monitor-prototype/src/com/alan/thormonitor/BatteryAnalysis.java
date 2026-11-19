@@ -14,7 +14,7 @@ final class BatteryAnalysis {
  static Runtime runtime(List<BatterySample> history,BatterySample current){
   if(current==null)return new Runtime("Waiting for readings","Battery readings will appear here.");
   if(current.plugged)return new Runtime("External power connected","An estimate needs measured unplugged use.");
-  if(current.level<=0)return new Runtime("Battery empty","Connect the Thor to power.");
+  if(current.level<=0)return new Runtime("Battery empty","Connect the device to power.");
   TreeMap<Long,BatterySample> index=new TreeMap<>();for(BatterySample p:history)if(p.time<=current.time&&p.time>=current.time-7200000)index.put(p.time,p);index.put(current.time,current);
   List<BatterySample> sorted=new ArrayList<>(index.values()),segment=new ArrayList<>();segment.add(current);
   for(int i=sorted.size()-2;i>=0;i--){BatterySample a=sorted.get(i),b=segment.get(0);long gap=b.time-a.time;if(a.plugged||gap<=0||gap>600000||b.level-a.level>1)break;segment.add(0,a);}

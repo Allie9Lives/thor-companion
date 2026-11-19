@@ -53,11 +53,19 @@ class BatteryAlertOptions {
 }
 
 class BatteryAlert {
-  const BatteryAlert(this.key, this.title, this.body);
+  const BatteryAlert(this.key, this.title, this.body, {this.delay = 0});
   final String key, title, body;
+
+  /// Seconds the OS waits before showing it, so it fires while the app is suspended.
+  final int delay;
   BatteryAlert forDevice(String name) =>
-      BatteryAlert(key, name, '$title. $body');
-  Map<String, String> toMap() => {'id': key, 'title': title, 'body': body};
+      BatteryAlert(key, name, '$title. $body', delay: delay);
+  Map<String, String> toMap() => {
+    'id': key,
+    'title': title,
+    'body': body,
+    if (delay > 0) 'delay': '$delay',
+  };
 }
 
 class BatteryAlertTracker {
@@ -112,8 +120,8 @@ class BatteryAlertTracker {
         alerts.add(
           BatteryAlert(
             warn10 ? 'low10' : 'low20',
-            'Thor battery is low',
-            '${level.round()}% remaining. Connect your Thor to power.',
+            'Device battery is low',
+            '${level.round()}% remaining. Connect your device to power.',
           ),
         );
       }
@@ -123,7 +131,7 @@ class BatteryAlertTracker {
         alerts.add(
           BatteryAlert(
             'low20',
-            'Thor battery is low',
+            'Device battery is low',
             '${level.round()}% remaining.',
           ),
         );
@@ -135,8 +143,8 @@ class BatteryAlertTracker {
         alerts.add(
           BatteryAlert(
             'charged80',
-            'Thor charged to 80%',
-            'Your Thor is now at ${level.round()}%.',
+            'Device charged to 80%',
+            'Your device is now at ${level.round()}%.',
           ),
         );
       }
@@ -146,8 +154,8 @@ class BatteryAlertTracker {
         alerts.add(
           const BatteryAlert(
             'plugged',
-            'Thor connected to power',
-            'Your Thor is plugged in.',
+            'Device connected to power',
+            'Your device is plugged in.',
           ),
         );
       }
@@ -155,8 +163,8 @@ class BatteryAlertTracker {
         alerts.add(
           const BatteryAlert(
             'unplugged',
-            'Thor disconnected from power',
-            'Your Thor is running on battery.',
+            'Device disconnected from power',
+            'Your device is running on battery.',
           ),
         );
       }
@@ -171,3 +179,5 @@ Future<bool> requestBatteryAlertPermission() async =>
     await batteryAlertChannel.invokeMethod<bool>('requestPermission') ?? false;
 Future<void> showBatteryAlert(BatteryAlert alert) =>
     batteryAlertChannel.invokeMethod<void>('show', alert.toMap());
+Future<void> cancelBatteryAlert(String key) =>
+    batteryAlertChannel.invokeMethod<void>('cancel', key);

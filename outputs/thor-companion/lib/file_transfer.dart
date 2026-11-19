@@ -34,7 +34,7 @@ class FileConnection {
         !RegExp(r'^[a-f0-9]{64}$').hasMatch(token) ||
         hosts.length > 16 ||
         hosts.any((s) => !validHost(s))) {
-      throw const FormatException('Invalid Thor file connection');
+      throw const FormatException('Invalid device file connection');
     }
     return FileConnection(
       hosts: hosts,
@@ -162,6 +162,43 @@ class ThorFiles {
     String route, [
     Map<String, String> query = const {},
   ]) async => response(await (await request('GET', route, query)).close());
+
+  /// Opens the virtual controller channel: one JSON event per line until closed.
+  Future<LivePad> livePad() async {
+    final socket = await SecureSocket.connect(
+      host,
+      connection.port,
+      context: SecurityContext(withTrustedRoots: false),
+      onBadCertificate: (c) =>
+          sha256.convert(c.der).toString() == connection.pin,
+      timeout: const Duration(seconds: 10),
+    );
+    socket.write(
+      'POST /v1/input HTTP/1.1\r\nHost: $host\r\n'
+      'Authorization: Bearer ${connection.token}\r\n\r\n',
+    );
+    await socket.flush();
+    return LivePad(socket);
+  }
+
+  /// Raw H.264 for one screen (0 top, 1 bottom) until cancelled. A still screen
+  /// sends nothing for a while, so the body has no read timeout.
+  Future<HttpClientResponse> liveStream(int screen, {int quality = 0}) async {
+    final r = await (await request('GET', 'stream', {
+      'screen': '$screen',
+      'quality': '$quality',
+    })).close();
+    if (r.statusCode == 404) {
+      await r.drain<void>();
+      throw StateError('Update Thor Monitor to use live view.');
+    }
+    if (r.statusCode != 200) {
+      await response(r);
+      throw StateError('Live view is unavailable.');
+    }
+    return r;
+  }
+
   Future<Map<String, dynamic>> recording(
     String action, {
     String token = '',
@@ -183,7 +220,10 @@ class ThorFiles {
       {'token': token, 'mode': '$mode', 'quality': '$quality', 'fps': '$fps'},
     );
     if (action != 'status') request.contentLength = 0;
-    return response(await request.close().timeout(const Duration(seconds: 25)));
+    // Stopping a long clip joins its segments on the Thor before replying.
+    return response(
+      await request.close().timeout(const Duration(seconds: 120)),
+    );
   }
 
   Future<void> recordingFile(
@@ -206,7 +246,7 @@ class ThorFiles {
     }
     final size = reply.contentLength;
     if (size < 128 ||
-        size > 512 * 1024 * 1024 ||
+        size > 2048 * 1024 * 1024 ||
         reply.headers.contentType?.mimeType != 'video/mp4') {
       throw StateError('Invalid recording file');
     }
@@ -349,4 +389,59 @@ class ThorFiles {
   }
 
   void close() => client.close(force: true);
+}
+
+/// Virtual controller events for Thor Monitor's /v1/input channel.
+class LivePad {
+  LivePad(this._socket) {
+    _ping = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => _write('{"t":"p"}'),
+    );
+    _socket.listen(
+      (data) {
+        final text = ascii.decode(data, allowInvalid: true);
+        if (!_answered) {
+          _answered = true;
+          if (!text.startsWith('HTTP/1.1 200')) {
+            error = text.contains('Recovery')
+                ? 'Advanced controls are unavailable. Check Recovery setup on the device.'
+                : 'Update Thor Monitor to use the controller.';
+          }
+        } else if (text.contains('error')) {
+          error = 'The device rejected a controller input.';
+        }
+      },
+      onDone: () => closed = true,
+      onError: (_) => closed = true,
+      cancelOnError: true,
+    );
+  }
+  final SecureSocket _socket;
+  late final Timer _ping;
+  bool _answered = false, closed = false;
+  String? error;
+
+  void _write(String line) {
+    if (closed) return;
+    try {
+      _socket.write('$line\n');
+    } catch (_) {
+      closed = true;
+    }
+  }
+
+  void button(int key, bool down) =>
+      _write(jsonEncode({'t': 'b', 'k': key, 'd': down ? 1 : 0}));
+
+  /// Tap (0), swipe (1), Back (2) or Home (3) on screen 0 (top) or 1 (bottom).
+  void input(int screen, int action, Map<String, int> points) =>
+      _write(jsonEncode({'t': 'i', 'value': action, 'd': screen, ...points}));
+  void axes(Map<String, int> values) =>
+      _write(jsonEncode({'t': 'a', ...values}));
+  void close() {
+    _ping.cancel();
+    closed = true;
+    _socket.destroy();
+  }
 }

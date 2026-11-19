@@ -18,6 +18,7 @@ class AdaptiveTransport extends ChangeNotifier
     this.persist = true,
     this.interval = const Duration(seconds: 5),
     ControlNetwork Function(FileConnection, String)? networkFactory,
+    this.savedConnection,
   }) : networkFactory = networkFactory ?? PinnedControlNetwork.new {
     _radioSub = ble.radio.listen((s) {
       _actualRadio = s;
@@ -29,6 +30,9 @@ class AdaptiveTransport extends ChangeNotifier
   final bool persist;
   final Duration interval;
   final ControlNetwork Function(FileConnection, String) networkFactory;
+
+  /// Replaces the persisted Wi-Fi/VPN credentials lookup (tests).
+  final Future<FileConnection?> Function(String id)? savedConnection;
   LinkPolicy policy = LinkPolicy();
   bool automatic = true, foreground = true, bleConnected = false;
   bool sleeping = false;
@@ -64,7 +68,7 @@ class AdaptiveTransport extends ChangeNotifier
   String? _device;
   FileConnection? _credentials;
   List<String> get knownNetworkHosts =>
-      List.unmodifiable(_credentials?.hosts ?? const <String>[]);
+      List.unmodifiable(_credentials?.candidateHosts ?? const <String>[]);
   Future<void>? _networkSearch;
   ControlNetwork? _network;
   String? networkHost;
@@ -155,8 +159,9 @@ class AdaptiveTransport extends ChangeNotifier
       setSleeping(false);
     }
     if (!value) {
+      // Network polling is foreground-only. A Wi-Fi session stays logically
+      // connected; the next foreground tick re-verifies it or reports the loss.
       _dropNetwork('Bluetooth handles background monitoring');
-      if (!bleConnected) _lost();
     } else {
       unawaited(_tick());
     }
@@ -212,26 +217,36 @@ class AdaptiveTransport extends ChangeNotifier
     _connection = output;
     policy = LinkPolicy();
     _logical = false;
-    _openBle(epoch, background);
-    if (persist) {
-      try {
-        final marker = await SharedPreferencesAsync().getString(
-          'adaptive_owner',
-        );
-        final saved = await fileBridge.invokeMapMethod<String, dynamic>(
-          'loadConnection',
-        );
-        if (epoch == _epoch && marker != null && saved != null) {
-          final m = jsonDecode(marker) as Map;
-          final c = FileConnection.fromMap(saved);
-          if (m['id'] == id && m['pin'] == c.pin) _credentials = c;
-        }
-      } catch (_) {}
-    }
+    // Credentials first: a Bluetooth failure (radio off, Thor away) must find
+    // the saved Wi-Fi/VPN path before it can end the session.
+    final saved = await _saved(id);
     if (epoch != _epoch) return;
+    _credentials = saved ?? _credentials;
+    _openBle(epoch, background);
     _timer = Timer.periodic(interval, (_) => unawaited(_tick()));
     unawaited(_tick());
   }
+
+  Future<FileConnection?> _saved(String id) async {
+    if (savedConnection != null) return savedConnection!(id);
+    if (!persist) return null;
+    try {
+      final marker = await SharedPreferencesAsync().getString('adaptive_owner');
+      final saved = await fileBridge.invokeMapMethod<String, dynamic>(
+        'loadConnection',
+      );
+      if (marker == null || saved == null) return null;
+      final m = jsonDecode(marker) as Map;
+      final c = FileConnection.fromMap(saved);
+      return m['id'] == id && m['pin'] == c.pin ? c : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Whether this Thor has a saved Wi-Fi/VPN path, so Bluetooth is optional.
+  Future<bool> hasSavedNetwork(String id) async =>
+      automatic && (await _saved(id))?.candidateHosts.isNotEmpty == true;
 
   void _connected() {
     if (!_logical) {
@@ -341,6 +356,8 @@ class AdaptiveTransport extends ChangeNotifier
     if (networkReady) {
       _connected();
       _scheduleBle(epoch);
+    } else if (!foreground && _logical && _credentials != null) {
+      // Wi-Fi/VPN session in background: the next foreground tick decides.
     } else {
       _lost();
     }
@@ -381,7 +398,7 @@ class AdaptiveTransport extends ChangeNotifier
       _discovered = true;
       await _attachLive();
     } else if (!networkReady) {
-      throw StateError('No reachable Thor connection');
+      throw StateError('No reachable device connection');
     }
   }
 
@@ -464,7 +481,7 @@ class AdaptiveTransport extends ChangeNotifier
       }
     } catch (_) {
       if (_credentials == null) {
-        networkStatus = 'Enable Wi-Fi access in the Thor’s Host settings';
+        networkStatus = 'Enable Wi-Fi access in the device’s Host settings';
       }
     }
   }
@@ -578,11 +595,18 @@ class AdaptiveTransport extends ChangeNotifier
         } catch (_) {
           if (epoch == _epoch) {
             _dropNetwork('Network interrupted · using Bluetooth');
-            if (!bleConnected) _lost();
+            if (!bleConnected && foreground) _lost();
           }
         }
       }
-      if (_logical && !bleConnected && !networkReady && !sleeping) _lost();
+      // A tick that straddles going to background must not report a loss.
+      if (_logical &&
+          !bleConnected &&
+          !networkReady &&
+          !sleeping &&
+          foreground) {
+        _lost();
+      }
       _emitRadio();
       _changed();
     } finally {
@@ -682,7 +706,7 @@ class AdaptiveTransport extends ChangeNotifier
       ? 'live'
       : id == controlId
       ? 'control'
-      : throw ArgumentError('Unsupported Thor reading');
+      : throw ArgumentError('Unsupported device reading');
   Future<List<int>> _bleRead(String id) async {
     if (!bleConnected) throw StateError('Bluetooth is unavailable');
     final watch = Stopwatch()..start();
@@ -777,7 +801,7 @@ class AdaptiveTransport extends ChangeNotifier
   @override
   Future<void> writeControl(String device, List<int> bytes) async {
     if (device != _device || bytes.length > 180) {
-      throw StateError('Invalid Thor command');
+      throw StateError('Invalid device command');
     }
     final epoch = _epoch;
     if (sleeping) {
@@ -824,6 +848,23 @@ class AdaptiveTransport extends ChangeNotifier
     final reply = await _bleCommand(bytes);
     if (epoch != _epoch) throw StateError('Connection changed');
     _reply = reply;
+  }
+
+  /// After the active credential slot changes hands, point the owner marker at [id].
+  Future<void> claimSaved(String id) async {
+    if (!persist) return;
+    final saved = await fileBridge.invokeMapMethod<String, dynamic>(
+      'loadConnection',
+    );
+    final store = SharedPreferencesAsync();
+    if (saved == null) {
+      await store.remove('adaptive_owner');
+    } else {
+      await store.setString(
+        'adaptive_owner',
+        jsonEncode({'id': id, 'pin': FileConnection.fromMap(saved).pin}),
+      );
+    }
   }
 
   Future<void> forgetNetwork() async {

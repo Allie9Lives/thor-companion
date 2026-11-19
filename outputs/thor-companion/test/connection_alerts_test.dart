@@ -31,81 +31,62 @@ void main() {
     'Wi-Fi baseline silent, network changes named, captive transitions distinct, no stale replay',
     () {
       final t = ConnectionAlertTracker(), o = options();
-      expect(t.wifi(state(1, 'Home'), o, 'Thor', now), isEmpty);
+      expect(t.wifi(state(1, 'Home'), o, 'Device', now), isEmpty);
       expect(
-        t.wifi(state(2, 'Library'), o, 'Thor', now).single.body,
+        t.wifi(state(2, 'Library'), o, 'Device', now).single.body,
         contains('Library'),
       );
       expect(
         t
-            .wifi(state(3, 'Library', captive: true), o, 'Thor', now)
+            .wifi(state(3, 'Library', captive: true), o, 'Device', now)
             .map((a) => a.key),
         ['wifiSignIn'],
       );
-      expect(t.wifi(state(4, 'Library'), o, 'Thor', now), isEmpty);
+      expect(t.wifi(state(4, 'Library'), o, 'Device', now), isEmpty);
       expect(
-        t.wifi(state(5, '', connected: false), o, 'Thor', now).single.key,
+        t.wifi(state(5, '', connected: false), o, 'Device', now).single.key,
         'wifiLost',
       );
-      expect(t.wifi(state(6, 'Home', age: 120000), o, 'Thor', now), isEmpty);
-      expect(t.wifi(state(6, 'Home'), o, 'Thor', now), isEmpty);
+      expect(t.wifi(state(6, 'Home', age: 120000), o, 'Device', now), isEmpty);
+      expect(t.wifi(state(6, 'Home'), o, 'Device', now), isEmpty);
     },
   );
   test(
-    'Bluetooth debounces loss, restores once and suppresses deliberate sleep/disconnect',
+    'Bluetooth loss is scheduled with the OS, cancelled on quick reconnect, restored once',
     () {
       final t = ConnectionAlertTracker(), o = options();
-      expect(t.bluetooth(false, true, o, 'Thor', now), isEmpty);
-      expect(t.bluetooth(true, true, o, 'Thor', now), isEmpty);
-      expect(t.bluetooth(false, true, o, 'Thor', now), isEmpty);
-      expect(
-        t.bluetooth(
-          false,
-          true,
-          o,
-          'Thor',
-          now.add(const Duration(seconds: 14)),
-        ),
-        isEmpty,
+      List<BatteryAlert> at(
+        bool up,
+        int s, {
+        bool eligible = true,
+        List<String>? cancel,
+      }) => t.bluetooth(
+        up,
+        eligible,
+        o,
+        'Device',
+        now.add(Duration(seconds: s)),
+        cancel: cancel,
       );
-      expect(
-        t
-            .bluetooth(
-              false,
-              true,
-              o,
-              'Thor',
-              now.add(const Duration(seconds: 16)),
-            )
-            .single
-            .key,
-        'bluetoothLost',
-      );
-      expect(
-        t.bluetooth(
-          false,
-          true,
-          o,
-          'Thor',
-          now.add(const Duration(seconds: 30)),
-        ),
-        isEmpty,
-      );
-      expect(
-        t
-            .bluetooth(
-              true,
-              true,
-              o,
-              'Thor',
-              now.add(const Duration(seconds: 31)),
-            )
-            .single
-            .key,
-        'bluetoothBack',
-      );
-      expect(t.bluetooth(false, false, o, 'Thor', now), isEmpty);
-      expect(t.bluetooth(true, true, o, 'Thor', now), isEmpty);
+      expect(at(false, 0), isEmpty);
+      expect(at(true, 0), isEmpty);
+      final lost = at(false, 1).single;
+      expect([lost.key, lost.delay], ['bluetoothLost', 15]);
+      expect(lost.toMap()['delay'], '15');
+      expect(at(false, 10), isEmpty);
+      final cancel = <String>[];
+      expect(at(true, 12, cancel: cancel), isEmpty);
+      expect(cancel, ['bluetoothLost']);
+      expect(at(false, 20).single.key, 'bluetoothLost');
+      expect(at(false, 40), isEmpty);
+      final none = <String>[];
+      expect(at(true, 41, cancel: none).single.key, 'bluetoothBack');
+      expect(none, isEmpty);
+      expect(at(false, 50).single.key, 'bluetoothLost');
+      final sleep = <String>[];
+      expect(at(false, 51, eligible: false, cancel: sleep), isEmpty);
+      expect(sleep, ['bluetoothLost']);
+      expect(at(true, 52), isEmpty);
     },
   );
   test('notification options roundtrip with new events off by default', () {
@@ -116,7 +97,7 @@ void main() {
     expect(o.bluetoothBack, isTrue);
   });
   test(
-    'same pinned Thor retains LAN and VPN addresses, different Thor cannot inherit',
+    'same pinned device retains LAN and VPN addresses, different device cannot inherit',
     () {
       FileConnection link(List<String> h, String pin, {String? manual}) =>
           FileConnection(
@@ -124,7 +105,7 @@ void main() {
             port: 47183,
             pin: pin,
             token: 'b' * 64,
-            name: 'Thor',
+            name: 'Device',
             manualHost: manual,
           );
       final old = link(

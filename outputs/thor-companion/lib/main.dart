@@ -1,6 +1,8 @@
+import 'dart:math' as math;
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'device_switcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'ble_transport.dart';
 import 'adaptive_transport.dart';
@@ -19,6 +21,7 @@ import 'wifi_page.dart';
 import 'pairing_recovery.dart';
 import 'design_components.dart';
 import 'app_theme_icon.dart';
+import 'app_updates.dart';
 
 void main() => runApp(ThorCompanionApp());
 
@@ -200,15 +203,157 @@ class CompanionHome extends StatefulWidget {
 class _CompanionHomeState extends State<CompanionHome>
     with WidgetsBindingObserver {
   int tab = 0;
+
+  /// Banners the user closed; each comes back only when its message changes.
+  final _dismissed = <String>{};
+
+  /// Errors and status float above the page so they never shift the layout.
+  Widget? banners() {
+    final items = <(String, String, String, bool, Widget?)>[
+      if (c.error != null)
+        (
+          'error:${c.error}',
+          c.hostAuthorizationRequired
+              ? 'Phone approval needed'
+              : c.pairingRecoveryRequired
+              ? 'Pairing needs repair'
+              : 'Connection',
+          c.error!,
+          true,
+          c.pairingRecoveryRequired
+              ? TextButton(onPressed: repairPairing, child: const Text('Fix'))
+              : null,
+        ),
+      if (c.controlError != null && c.stats != null && tab == 2)
+        ('control:${c.controlError}', 'Controls', c.controlError!, true, null),
+      if (c.stale && !c.isDemo && c.stats != null)
+        (
+          'stale',
+          'Out of date',
+          'These readings may be old. Check that monitoring is running on your device.',
+          true,
+          null,
+        ),
+      if (c.retryAt != null)
+        (
+          'retry',
+          'Reconnecting',
+          'Retrying in ${c.retryAt!.difference(DateTime.now()).inSeconds.clamp(0, 60)} s.',
+          false,
+          null,
+        ),
+      ?versionBanner(),
+    ];
+    _dismissed.removeWhere((k) => !items.any((i) => i.$1 == k));
+    final shown = items.where((i) => !_dismissed.contains(i.$1)).toList();
+    final width = math.min(MediaQuery.sizeOf(context).width - 24, 596.0);
+    return AnimatedSwitcher(
+      duration: motionDuration(context, 220),
+      child: shown.isEmpty
+          ? const SizedBox.shrink()
+          : SizedBox(
+              key: ValueKey(shown.map((i) => i.$1).join('|')),
+              width: width,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final (key, title, text, warning, action) in shown)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Material(
+                        elevation: 6,
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(14),
+                        child: notice(
+                          title,
+                          text,
+                          warning: warning,
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ?action,
+                              IconButton(
+                                tooltip: 'Dismiss',
+                                visualDensity: VisualDensity.compact,
+                                icon: const Icon(Icons.close, size: 20),
+                                onPressed: () =>
+                                    setState(() => _dismissed.add(key)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+    );
+  }
+
   Color get background => AppPalette.of(context).background;
   Color get accent => AppPalette.of(context).accent;
   Color get onAccent => AppPalette.of(context).onAccent;
   Color get secondaryText => AppPalette.of(context).secondaryText;
   CompanionController get c => widget.controller;
+  String? appVersion;
+  AppRelease? latest;
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    unawaited(loadVersions());
+  }
+
+  Future<void> loadVersions() async {
+    try {
+      final v = await aboutBridge.invokeMapMethod<String, dynamic>('version');
+      appVersion = v?['version'] as String?;
+    } catch (_) {}
+    if (appVersion == null) return;
+    final release = await latestRelease(
+      userAgent: 'Thor-Companion/$appVersion',
+    );
+    if (mounted) setState(() => latest = release);
+  }
+
+  Future<void> openReleases() async {
+    try {
+      await aboutBridge.invokeMethod<void>('releases');
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Couldn’t open GitHub.')));
+      }
+    }
+  }
+
+  (String, String, String, bool, Widget?)? versionBanner() {
+    final app = appVersion, host = c.hardware?.hostVersion, update = latest;
+    if (app == null || c.isDemo) return null;
+    final button = TextButton(
+      onPressed: openReleases,
+      child: const Text('Get update'),
+    );
+    if (host != null && compareVersions(host, app) != 0) {
+      return (
+        'versions:$host:$app',
+        'Versions differ',
+        'Thor Monitor $host and Thor Companion $app. Install both from the same release.',
+        true,
+        button,
+      );
+    }
+    if (update != null && compareVersions(update.version, app) > 0) {
+      return (
+        'update:${update.version}',
+        'Update available',
+        'Version ${update.version} is on GitHub. Update the device and this phone together.',
+        false,
+        button,
+      );
+    }
+    return null;
   }
 
   @override
@@ -231,6 +376,8 @@ class _CompanionHomeState extends State<CompanionHome>
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: c,
     builder: (context, _) => Scaffold(
+      floatingActionButton: banners(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       bottomNavigationBar: c.stats == null
           ? null
           : Container(
@@ -385,31 +532,6 @@ class _CompanionHomeState extends State<CompanionHome>
                               ],
                             ),
                           ],
-                          if (c.error != null) ...[
-                            SizedBox(height: 18),
-                            notice(
-                              c.hostAuthorizationRequired
-                                  ? 'Phone approval needed'
-                                  : c.pairingRecoveryRequired
-                                  ? 'Pairing needs repair'
-                                  : 'Connection',
-                              c.error!,
-                              warning: true,
-                              trailing: c.pairingRecoveryRequired
-                                  ? TextButton(
-                                      onPressed: repairPairing,
-                                      child: const Text('Fix connection'),
-                                    )
-                                  : null,
-                            ),
-                          ],
-                          if (c.retryAt != null) ...[
-                            SizedBox(height: 12),
-                            notice(
-                              'Reconnecting',
-                              'Retrying in ${c.retryAt!.difference(DateTime.now()).inSeconds.clamp(0, 60)} s.',
-                            ),
-                          ],
                           SizedBox(height: 26),
                           TweenAnimationBuilder<double>(
                             key: ValueKey(
@@ -468,7 +590,7 @@ class _CompanionHomeState extends State<CompanionHome>
     children: [
       SizedBox(height: 18),
       Text(
-        'Connect your Thor',
+        'Connect your device',
         style: TextStyle(
           fontSize: 30,
           height: 1.06,
@@ -499,7 +621,7 @@ class _CompanionHomeState extends State<CompanionHome>
             step(
               '01',
               'Start monitoring',
-              'Start a monitoring session in the Thor app.',
+              'Start a monitoring session in the device app.',
             ),
             SizedBox(height: 18),
             step(
@@ -543,7 +665,7 @@ class _CompanionHomeState extends State<CompanionHome>
                       ? 'Connecting…'
                       : c.phase == CompanionPhase.scanning
                       ? 'Stop scanning'
-                      : 'Find Thor',
+                      : 'Find device',
                 ),
               ),
             ),
@@ -559,7 +681,7 @@ class _CompanionHomeState extends State<CompanionHome>
         SizedBox(height: 16),
         notice(
           'Pairing',
-          'Keep the Thor open for first pairing. Check its notification shade for a Pairing request.',
+          'Keep the device open for first pairing. Check its notification shade for a Pairing request.',
         ),
         TextButton(onPressed: c.disconnect, child: Text('Cancel connection')),
       ],
@@ -593,12 +715,33 @@ class _CompanionHomeState extends State<CompanionHome>
                       children: [
                         Icon(Icons.bookmark_remove_outlined, size: 20),
                         SizedBox(width: 12),
-                        Text('Forget Thor'),
+                        Text('Forget device'),
                       ],
                     ),
                   ),
                 ],
               ),
+            ],
+          ),
+        ),
+      ],
+      if (c.devices.any((d) => d.id != c.remembered?.id) && !c.busy) ...[
+        SizedBox(height: 16),
+        Text(
+          'Other saved devices',
+          style: TextStyle(fontSize: 14, color: secondaryText),
+        ),
+        SizedBox(height: 8),
+        surface(
+          child: Column(
+            children: [
+              for (final d in c.devices.where((d) => d.id != c.remembered?.id))
+                DeviceRow(
+                  device: d,
+                  active: false,
+                  onTap: () => unawaited(c.switchTo(d)),
+                  onForget: () => unawaited(c.forgetDevice(d)),
+                ),
             ],
           ),
         ),
@@ -693,6 +836,7 @@ class _CompanionHomeState extends State<CompanionHome>
 
   void settings() => showModalBottomSheet<void>(
     context: context,
+    sheetAnimationStyle: thorSheetAnimation(context),
     isScrollControlled: true,
     showDragHandle: true,
     useSafeArea: true,
@@ -771,6 +915,7 @@ class _CompanionHomeState extends State<CompanionHome>
     var working = false;
     showModalBottomSheet<void>(
       context: context,
+      sheetAnimationStyle: thorSheetAnimation(context),
       isScrollControlled: true,
       builder: (sheetContext) => StatefulBuilder(
         builder: (context, updateSheet) {
@@ -813,7 +958,7 @@ class _CompanionHomeState extends State<CompanionHome>
                   ),
                   SizedBox(height: 8),
                   Text(
-                    'Shows incoming battery readings on the Lock Screen and Dynamic Island. The Thor must be monitoring. iOS limits each Live Activity to eight hours.',
+                    'Shows incoming battery readings on the Lock Screen and Dynamic Island. The device must be monitoring. iOS limits each Live Activity to eight hours.',
                     style: TextStyle(color: secondaryText, height: 1.5),
                   ),
                   SizedBox(height: 12),
@@ -836,7 +981,7 @@ class _CompanionHomeState extends State<CompanionHome>
                   ),
                   SizedBox(height: 8),
                   Text(
-                    'Home Screen: long-press → Edit → Add Widget → search Thor → add Thor Battery.\n\nLock Screen: long-press your Lock Screen → Customize → Lock Screen → tap the widget area → search Thor → add Thor Battery.\n\nThis widget shows a saved snapshot. “As of” is the snapshot time; iOS may delay its refresh. Use Live battery for more frequent updates.',
+                    'Home Screen: long-press → Edit → Add Widget → search device → add device Battery.\n\nLock Screen: long-press your Lock Screen → Customize → Lock Screen → tap the widget area → search device → add device Battery.\n\nThis widget shows a saved snapshot. “As of” is the snapshot time; iOS may delay its refresh. Use Live battery for more frequent updates.',
                     style: TextStyle(color: secondaryText, height: 1.5),
                   ),
                   if (c.widgetError != null) ...[
@@ -862,6 +1007,7 @@ class _CompanionHomeState extends State<CompanionHome>
 
   void help() => showModalBottomSheet<void>(
     context: context,
+    sheetAnimationStyle: thorSheetAnimation(context),
     isScrollControlled: true,
     builder: (context) => SafeArea(
       child: SingleChildScrollView(
@@ -876,7 +1022,7 @@ class _CompanionHomeState extends State<CompanionHome>
             ),
             SizedBox(height: 18),
             Text(
-              'Start monitoring on the Thor, then tap Find Thor and select your device.\n\nFor first pairing, keep the Thor open and confirm the pairing request on both devices. The request may appear in the Thor’s notifications.\n\nIf Bluetooth connects but readings are denied, open Thor Monitor → Settings → Repair phone connection and approve this phone. If iOS says pairing information was removed, forget the Thor in Settings → Bluetooth and connect again.\n\nAutomatic reconnect resumes after interruptions. Disconnect pauses retries. iOS controls background execution; reopen the app if updates pause. Readings are marked out of date after 90 seconds without an update.\n\nAll readings are transferred directly over Bluetooth.',
+              'Start monitoring on the device, then tap Find device and select your device.\n\nFor first pairing, keep the device open and confirm the pairing request on both devices. The request may appear in the device’s notifications.\n\nIf Bluetooth connects but readings are denied, open Thor Monitor → Settings → Repair phone connection and approve this phone. If iOS says pairing information was removed, forget the device in Settings → Bluetooth and connect again.\n\nAutomatic reconnect resumes after interruptions. Disconnect pauses retries. iOS controls background execution; reopen the app if updates pause. Readings are marked out of date after 90 seconds without an update.\n\nAll readings are transferred directly over Bluetooth.',
               style: TextStyle(color: secondaryText, height: 1.6),
             ),
             SizedBox(height: 20),

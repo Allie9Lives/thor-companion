@@ -31,7 +31,7 @@ void main() {
     ble = KeyboardBle();
     c = CompanionController(transport: ble, rememberDevice: false);
     await settle();
-    await c.connect(const NearbyThor('thor', 'Thor', -50));
+    await c.connect(const NearbyThor('thor', 'Device', -50));
     ble.links.add(LinkState.connected);
     await settle();
   });
@@ -58,7 +58,7 @@ void main() {
       ble.loseAck = true;
       expect(await c.sendKeyboardText('test ' * 100), isFalse);
       expect(ble.input.length, 1);
-      expect(c.keyboardError, contains('Check the Thor'));
+      expect(c.keyboardError, contains('Check the device'));
       await c.refresh();
       expect(ble.input.length, 1);
     },

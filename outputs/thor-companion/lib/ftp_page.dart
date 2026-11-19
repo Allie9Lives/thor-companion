@@ -233,7 +233,7 @@ class _FtpServerPageState extends State<FtpServerPage> {
                 ),
                 SizedBox(height: 8),
                 Text(
-                  'Stops with monitoring or a Thor restart. Active transfers keep the Thor awake.',
+                  'Stops with monitoring or a device restart. Active transfers keep the device awake.',
                 ),
               ],
             ),

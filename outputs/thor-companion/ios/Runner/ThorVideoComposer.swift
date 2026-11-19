@@ -1,5 +1,7 @@
 import Foundation
 import AVFoundation
+import VideoToolbox
+import Flutter
 
 /// Composes the two independent, bounded recording tracks without changing their aspect ratios.
 enum ThorVideoComposer {
@@ -76,5 +78,156 @@ enum ThorVideoComposer {
       if export.status == .completed { completion(.success(output)) }
       else { try? FileManager.default.removeItem(at: output); completion(.failure(export.error ?? failure("Could not combine recordings."))) }
     }
+  }
+}
+
+// ThorLiveVideo is kept in this file so the Xcode project needs no new source entry.
+
+/// Decodes one Thor screen's raw H.264 live view (id 0 top, 1 bottom) into a Flutter texture.
+/// Dart owns the pinned network stream; size and reset callbacks carry the id.
+final class ThorLiveVideo: NSObject, FlutterTexture {
+  private let textures: FlutterTextureRegistry
+  private let channel: FlutterMethodChannel
+  private let id: Int
+  private let queue = DispatchQueue(label: "ThorLiveVideo")
+  private let lock = NSLock()
+  private var latest: CVPixelBuffer?
+  private var textureId: Int64 = 0
+  private var session: VTDecompressionSession?
+  private var format: CMVideoFormatDescription?
+  private var sps: Data?, pps: Data?
+  private var carry = Data()
+  private var waitingForKeyframe = true
+
+  init(textures: FlutterTextureRegistry, channel: FlutterMethodChannel, id: Int) {
+    self.textures = textures; self.channel = channel; self.id = id
+  }
+
+  func copyPixelBuffer() -> Unmanaged<CVPixelBuffer>? {
+    lock.lock(); defer { lock.unlock() }
+    guard let buffer = latest else { return nil }
+    return Unmanaged.passRetained(buffer)
+  }
+
+  func handle(_ method: String, data: Data?, result: @escaping FlutterResult) {
+    switch method {
+    case "start":
+      queue.async { self.reset() }
+      if textureId != 0 { textures.unregisterTexture(textureId) }
+      textureId = textures.register(self)
+      result(textureId)
+    case "feed":
+      guard let data, data.count <= 4 << 20 else {
+        result(FlutterError(code: "live", message: "Invalid video data", details: nil)); return
+      }
+      queue.async { self.feed(data) }
+      result(nil)
+    case "stop":
+      queue.async { self.reset() }
+      if textureId != 0 { textures.unregisterTexture(textureId); textureId = 0 }
+      lock.lock(); latest = nil; lock.unlock()
+      result(nil)
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+
+  private func reset() {
+    if let session { VTDecompressionSessionInvalidate(session) }
+    session = nil; format = nil; sps = nil; pps = nil; carry = Data(); waitingForKeyframe = true
+  }
+
+  private func needsRestart() {
+    reset()
+    DispatchQueue.main.async { self.channel.invokeMethod("reset", arguments: ["id": self.id]) }
+  }
+
+  // screenrecord emits 4-byte start codes; parameter sets repeat unchanged when it restarts every 180 s.
+  private func feed(_ bytes: Data) {
+    carry.append(bytes)
+    let data = [UInt8](carry)
+    var starts: [Int] = []
+    var i = 0
+    while i + 3 < data.count {
+      if data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 0 && data[i + 3] == 1 { starts.append(i); i += 4 } else { i += 1 }
+    }
+    guard let last = starts.last else { if carry.count > 8 << 20 { carry = Data() }; return }
+    for n in 0..<(starts.count - 1) { nal(Array(data[starts[n] + 4 ..< starts[n + 1]])) }
+    carry = Data(data[last...])
+  }
+
+  private func nal(_ unit: [UInt8]) {
+    guard let first = unit.first else { return }
+    switch first & 31 {
+    case 7: if session == nil { sps = Data(unit) }
+    case 8: if session == nil { pps = Data(unit); configure() }
+    case 5: waitingForKeyframe = false; decode(unit)
+    case 1: if !waitingForKeyframe { decode(unit) }
+    default: break
+    }
+  }
+
+  private func configure() {
+    guard session == nil, let sps, let pps else { return }
+    var description: CMFormatDescription?
+    let status = sps.withUnsafeBytes { s in
+      pps.withUnsafeBytes { p in
+        let pointers = [s.bindMemory(to: UInt8.self).baseAddress!, p.bindMemory(to: UInt8.self).baseAddress!]
+        let sizes = [sps.count, pps.count]
+        return CMVideoFormatDescriptionCreateFromH264ParameterSets(
+          allocator: kCFAllocatorDefault, parameterSetCount: 2, parameterSetPointers: pointers,
+          parameterSetSizes: sizes, nalUnitHeaderLength: 4, formatDescriptionOut: &description)
+      }
+    }
+    guard status == noErr, let description else { return }
+    let attributes: [CFString: Any] = [
+      kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_32BGRA,
+      kCVPixelBufferIOSurfacePropertiesKey: [:] as [String: Any],
+      kCVPixelBufferMetalCompatibilityKey: true,
+    ]
+    var callback = VTDecompressionOutputCallbackRecord(
+      decompressionOutputCallback: { refcon, _, status, _, image, _, _ in
+        guard status == noErr, let image, let refcon else { return }
+        Unmanaged<ThorLiveVideo>.fromOpaque(refcon).takeUnretainedValue().show(image)
+      },
+      decompressionOutputRefCon: Unmanaged.passUnretained(self).toOpaque())
+    var created: VTDecompressionSession?
+    guard VTDecompressionSessionCreate(allocator: kCFAllocatorDefault, formatDescription: description,
+                                       decoderSpecification: nil, imageBufferAttributes: attributes as CFDictionary,
+                                       outputCallback: &callback, decompressionSessionOut: &created) == noErr,
+          let created else { return }
+    VTSessionSetProperty(created, key: kVTDecompressionPropertyKey_RealTime, value: kCFBooleanTrue)
+    session = created; format = description
+    let size = CMVideoFormatDescriptionGetDimensions(description)
+    DispatchQueue.main.async {
+      self.channel.invokeMethod("size", arguments: ["id": self.id, "width": Int(size.width), "height": Int(size.height)])
+    }
+  }
+
+  private func decode(_ unit: [UInt8]) {
+    guard let session, let format else { return }
+    let length = unit.count + 4
+    var block: CMBlockBuffer?
+    guard CMBlockBufferCreateWithMemoryBlock(allocator: kCFAllocatorDefault, memoryBlock: nil, blockLength: length,
+                                             blockAllocator: kCFAllocatorDefault, customBlockSource: nil, offsetToData: 0,
+                                             dataLength: length, flags: 0, blockBufferOut: &block) == noErr,
+          let block else { return }
+    var prefixed = withUnsafeBytes(of: UInt32(unit.count).bigEndian) { [UInt8]($0) }
+    prefixed.append(contentsOf: unit)
+    guard CMBlockBufferReplaceDataBytes(with: prefixed, blockBuffer: block, offsetIntoDestination: 0, dataLength: length) == noErr else { return }
+    var sample: CMSampleBuffer?
+    var sampleSize = length
+    guard CMSampleBufferCreateReady(allocator: kCFAllocatorDefault, dataBuffer: block, formatDescription: format,
+                                    sampleCount: 1, sampleTimingEntryCount: 0, sampleTimingArray: nil,
+                                    sampleSizeEntryCount: 1, sampleSizeArray: &sampleSize, sampleBufferOut: &sample) == noErr,
+          let sample else { return }
+    let status = VTDecompressionSessionDecodeFrame(session, sampleBuffer: sample, flags: [], frameRefcon: nil, infoFlagsOut: nil)
+    // iOS invalidates the session while backgrounded; a fresh stream brings a new keyframe.
+    if status == kVTInvalidSessionErr { needsRestart() }
+  }
+
+  private func show(_ image: CVImageBuffer) {
+    lock.lock(); latest = image; lock.unlock()
+    DispatchQueue.main.async { if self.textureId != 0 { self.textures.textureFrameAvailable(self.textureId) } }
   }
 }

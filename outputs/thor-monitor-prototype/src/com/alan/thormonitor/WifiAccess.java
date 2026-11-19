@@ -8,7 +8,7 @@ final class WifiAccess {
  private static JSONArray saved=new JSONArray(),nearby=new JSONArray();private static long savedAt,nearbyAt;
  static JSONObject helper(Context c,JSONObject request)throws Exception{
   try(LocalSocket s=new LocalSocket()){s.connect(new LocalSocketAddress(ThorControls.socketName(c),LocalSocketAddress.Namespace.ABSTRACT));s.setSoTimeout(6000);if(s.getPeerCredentials().getUid()!=2000)throw new SecurityException();
-   byte[] bytes=request.toString().getBytes(StandardCharsets.UTF_8);if(bytes.length>4096)throw new IllegalArgumentException("Wi-Fi request too large");DataOutputStream out=new DataOutputStream(s.getOutputStream());out.writeShort(bytes.length);out.write(bytes);out.flush();DataInputStream in=new DataInputStream(s.getInputStream());int n=in.readUnsignedShort();if(n>32768)throw new IOException();byte[] reply=new byte[n];in.readFully(reply);JSONObject j=new JSONObject(new String(reply,StandardCharsets.UTF_8));if(!j.optBoolean("ok"))throw new IllegalStateException(j.optString("error","Check Controls recovery on the Thor"));return j;
+   byte[] bytes=request.toString().getBytes(StandardCharsets.UTF_8);if(bytes.length>4096)throw new IllegalArgumentException("Wi-Fi request too large");DataOutputStream out=new DataOutputStream(s.getOutputStream());out.writeShort(bytes.length);out.write(bytes);out.flush();DataInputStream in=new DataInputStream(s.getInputStream());int n=in.readUnsignedShort();if(n>32768)throw new IOException();byte[] reply=new byte[n];in.readFully(reply);JSONObject j=new JSONObject(new String(reply,StandardCharsets.UTF_8));if(!j.optBoolean("ok"))throw new IllegalStateException(j.optString("error","Check Controls recovery on the device"));return j;
   }catch(IOException e){throw new IllegalStateException("Update Thor Monitor and check Controls recovery");}
  }
  static synchronized JSONObject cached(Context c){if(!state.has("known")){try{state=new JSONObject(c.getSharedPreferences("monitor",0).getString("wifi_state","{}"));}catch(Exception ignored){}}try{return new JSONObject(state.toString());}catch(Exception e){return new JSONObject();}}
@@ -36,7 +36,7 @@ final class WifiAccess {
    if(!(value instanceof String)||!stage.equals(value)||used==0||expires<SystemClock.elapsedRealtime()){clear();throw new IllegalArgumentException("Network details expired; try again");}
    try{JSONObject config=new JSONObject(new String(staged,0,used,StandardCharsets.UTF_8));result=helper(c,new JSONObject().put("set","wifi_join").put("value",config));}finally{clear();}checked=0;refresh(c);
   }else if(key.equals("wifi_portal")){
-   if(integer(value)!=0)throw new IllegalArgumentException("Invalid sign-in request");Network n=wifiNetwork(c);if(n==null)throw new IllegalStateException("Connect the Thor to Wi-Fi first");helper(c,new JSONObject().put("set","wifi_portal").put("value",n.getNetworkHandle()));result.put("opened",true);
+   if(integer(value)!=0)throw new IllegalArgumentException("Invalid sign-in request");Network n=wifiNetwork(c);if(n==null)throw new IllegalStateException("Connect the device to Wi-Fi first");helper(c,new JSONObject().put("set","wifi_portal").put("value",n.getNetworkHandle()));result.put("opened",true);
   }else throw new IllegalArgumentException("Unsupported Wi-Fi action");
   return result.put("ack",ack).put("error","");
  }

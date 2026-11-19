@@ -74,7 +74,7 @@ void main() {
         port: server.port,
         pin: '0' * 64,
         token: connection.token,
-        name: 'Thor',
+        name: 'Device',
       ),
       '127.0.0.1',
     );

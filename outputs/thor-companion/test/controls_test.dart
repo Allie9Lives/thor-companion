@@ -66,7 +66,7 @@ void main() {
     ble = ControlBle();
     c = CompanionController(transport: ble, rememberDevice: false);
     await Future<void>.delayed(const Duration(milliseconds: 20));
-    await c.connect(const NearbyThor('thor', 'Thor', -50));
+    await c.connect(const NearbyThor('thor', 'Device', -50));
     ble.links.add(LinkState.connected);
     await Future<void>.delayed(const Duration(milliseconds: 20));
   });

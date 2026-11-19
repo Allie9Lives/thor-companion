@@ -1,6 +1,7 @@
 enum ControlRoute { bluetooth, network }
 
 /// Separate signal from routing: no network route without a recent successful probe.
+/// Wi-Fi/VPN is the primary route once verified; Bluetooth is the fallback.
 class LinkPolicy {
   ControlRoute route = ControlRoute.bluetooth;
   double? bleMs, networkMs;
@@ -50,21 +51,9 @@ class LinkPolicy {
       route = ControlRoute.bluetooth;
     } else if (!bleAvailable) {
       route = ControlRoute.network;
-    } else if (switchedAt == null ||
-        now.difference(switchedAt!) >= const Duration(seconds: 15)) {
-      if (route == ControlRoute.bluetooth &&
-          networkGood >= 2 &&
-          (weak >= 2 ||
-              (networkGood >= 3 &&
-                  bleMs != null &&
-                  bleMs! > 100 &&
-                  networkMs! < bleMs! * .65))) {
-        route = ControlRoute.network;
-      } else if (route == ControlRoute.network &&
-          strong >= 3 &&
-          (bleMs == null || networkMs! > bleMs! * .8)) {
-        route = ControlRoute.bluetooth;
-      }
+    } else if (networkGood >= 2) {
+      // Two good probes in a row before leaving a live Bluetooth link.
+      route = ControlRoute.network;
     }
     if (old != route) switchedAt = now;
     return route;

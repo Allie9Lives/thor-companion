@@ -30,14 +30,14 @@ final class ThorControls {
     synchronized void clearShot(){shot=null;streamRequested=false;shotHandler.removeCallbacks(expireShot);}
     byte[] captureImage(int mode) throws Exception {
         if(context.getSystemService(KeyguardManager.class).isKeyguardLocked() || !context.getSystemService(PowerManager.class).isInteractive())
-            throw new IllegalStateException("Open and unlock the Thor to capture its screens");
+            throw new IllegalStateException("Open and unlock the device to capture its screens");
         try(LocalSocket socket=new LocalSocket()) {
             socket.connect(new LocalSocketAddress(socketName(context),LocalSocketAddress.Namespace.ABSTRACT));socket.setSoTimeout(20000);
             if(socket.getPeerCredentials().getUid()!=2000)throw new SecurityException("Controls helper unavailable");
             byte[] request=new JSONObject().put("set","capture").put("value",mode).toString().getBytes("UTF-8");
             DataOutputStream out=new DataOutputStream(socket.getOutputStream());out.writeShort(request.length);out.write(request);out.flush();
             DataInputStream in=new DataInputStream(socket.getInputStream());int size=in.readInt();
-            if(size<10 || size>ScreenCapture.MAX_BYTES)throw new IOException("Capture failed; check automatic recovery or restart the Thor after updating");
+            if(size<10 || size>ScreenCapture.MAX_BYTES)throw new IOException("Capture failed; check automatic recovery or restart the device after updating");
             byte[] bytes=new byte[size];in.readFully(bytes);return bytes;
         }
     }
@@ -62,31 +62,37 @@ final class ThorControls {
         }catch(Exception e){return new JSONObject();}
     }
     boolean helperReady() { JSONObject status=helperStatus(context);return status.optBoolean("ok")&&status.optInt("protocol")>=9; }
-    static int outdatedHelperPid(Context c){JSONObject status=helperStatus(c);return status.optBoolean("ok")&&status.optInt("protocol")<10?status.optInt("peer_pid",0):0;}
+    static int outdatedHelperPid(Context c){JSONObject status=helperStatus(c);return status.optBoolean("ok")&&status.optInt("protocol")<12?status.optInt("peer_pid",0):0;}
     private boolean helper(String command,int value) {
+        try { return helper(new JSONObject().put("set",command).put("value",value)); } catch(Exception e) { return false; }
+    }
+    private boolean helper(JSONObject request) {
         try(LocalSocket socket=new LocalSocket()) {
             socket.connect(new LocalSocketAddress(socketName(context),LocalSocketAddress.Namespace.ABSTRACT));
-            socket.setSoTimeout(4000);
+            socket.setSoTimeout(6000);
             if(socket.getPeerCredentials().getUid()!=2000) return false;
-            byte[] bytes=new JSONObject().put("set",command).put("value",value).toString().getBytes("UTF-8");
+            byte[] bytes=request.toString().getBytes("UTF-8");
             DataOutputStream out=new DataOutputStream(socket.getOutputStream());out.writeShort(bytes.length);out.write(bytes);out.flush();
             DataInputStream in=new DataInputStream(socket.getInputStream());int length=in.readUnsignedShort();if(length>256)return false;
             byte[] response=new byte[length];in.readFully(response);return new JSONObject(new String(response,"UTF-8")).optBoolean("ok");
         } catch(Exception e) { return false; }
     }
-    private int bottom() {
-        for (Display d : context.getSystemService(DisplayManager.class).getDisplays())
+    private int bottom() { return bottom(context); }
+    /** Second built-in screen (the Thor's bottom screen), or -1 on single-screen devices. */
+    static int bottom(Context c) {
+        for (Display d : c.getSystemService(DisplayManager.class).getDisplays())
             if (d.getDisplayId()!=Display.DEFAULT_DISPLAY && internal(d)) return d.getDisplayId();
         return -1;
     }
-    private boolean internal(Display d) {
+    static int screens(Context c) { return bottom(c)<0?1:2; }
+    private static boolean internal(Display d) {
         try { return ((Integer)Display.class.getDeclaredMethod("getType").invoke(d))==1; }
         catch(Exception e) { return false; }
     }
     private int brightness(int display, Integer value) throws Exception {
         if (display < 0) throw new IllegalStateException("Screen unavailable");
         IBinder binder=(IBinder)Class.forName("android.os.ServiceManager").getDeclaredMethod("getService",String.class).invoke(null,"SettingsController");
-        if (binder==null) throw new IllegalStateException("Thor display controller unavailable");
+        if (binder==null) throw new IllegalStateException("Device display controller unavailable");
         Parcel in=Parcel.obtain(), out=Parcel.obtain();
         try {
             in.writeInt(display);
@@ -102,6 +108,11 @@ final class ThorControls {
         if(get(setting)!=value) throw new IllegalStateException("Setting was rejected");
     }
     void holdSecondaryVolume(int value){if(FindThor.volumeLocked()&&get("secondary_screen_volume_level")!=value)helper("volume",value);}
+    private static boolean ayn(){return ThorModel.family(Build.MANUFACTURER,Build.MODEL).equals("ayn");}
+    /** AYN's per-screen brightness service; other devices use the standard brightness setting. */
+    private static boolean vendorDisplay(){try{return Class.forName("android.os.ServiceManager").getDeclaredMethod("getService",String.class).invoke(null,"SettingsController")!=null;}catch(Exception e){return false;}}
+    private boolean supportsHz(int hz){for(Display.Mode mode:context.getSystemService(DisplayManager.class).getDisplay(0).getSupportedModes())if(Math.abs(mode.getRefreshRate()-hz)<1)return true;return false;}
+    private static void aynOnly(){if(!ayn())throw new IllegalArgumentException("Not available on this device");}
     private int pct(int n,int max) { return Math.round(100f*n/max); }
     synchronized JSONObject snapshot() {
         JSONObject j=new JSONObject();
@@ -113,18 +124,25 @@ final class ThorControls {
             if(shot!=null)j.put("shot_token",Integer.toUnsignedString(shot.token)).put("shot_bytes",shot.bytes.length).put("shot_crc",shot.crc);
             j.put("files",true).put("activity",true);
             j.put("keyboard",true).put("keyboard_selected",RemoteKeyboard.selected(context)).put("keyboard_focused",RemoteKeyboard.focused());
-            try { j.put("bt",pct(brightness(0,null),255)).put("bb",pct(brightness(bottom(),null),255)); }
-            catch(Exception e) { j.put("brightness_error","Display control unavailable on this firmware"); }
+            // Unsupported controls are omitted so phones and Web Ops hide them.
+            boolean ayn=ayn(),dual=bottom()>=0;j.put("screens",dual?2:1);
+            if(vendorDisplay()){
+                try { j.put("bt",pct(brightness(0,null),255));if(dual)j.put("bb",pct(brightness(bottom(),null),255)); }
+                catch(Exception e) { j.put("brightness_error","Display control unavailable on this firmware"); }
+            }else if(get("screen_brightness")>=0)j.put("bt",pct(get("screen_brightness"),255));
             int max=audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
             j.put("vt",pct(audio.getStreamVolume(AudioManager.STREAM_MUSIC),max));
             int b=get("secondary_screen_volume_level");
-            j.put("vb",b<0?JSONObject.NULL:pct(b,max));
-            j.put("hz",Math.round(Settings.System.getFloat(resolver,"peak_refresh_rate",60)));
-            j.put("fan",get("fan_mode")).put("performance",get("performance_mode"));
-            j.put("bypass",get("is_charging_separation")).put("focus",get("screen_focus_lock"));
-            j.put("vibration",Settings.System.getInt(resolver,"vibrate_on",1)).put("style",get("temp_abxy_layout_mode"));
-            String led=Settings.System.getString(resolver,"joystick_light_enabled");
-            j.put("led", "1,1".equals(led)?1:"0,0".equals(led)?0:-1);
+            if(dual&&b>=0)j.put("vb",pct(b,max));
+            if(supportsHz(60)&&supportsHz(120))j.put("hz",Math.round(Settings.System.getFloat(resolver,"peak_refresh_rate",60)));
+            if(ayn){
+                j.put("fan",get("fan_mode")).put("performance",get("performance_mode"));
+                j.put("bypass",get("is_charging_separation")).put("style",get("temp_abxy_layout_mode"));
+                if(dual)j.put("focus",get("screen_focus_lock"));
+                String led=Settings.System.getString(resolver,"joystick_light_enabled");
+                j.put("led", "1,1".equals(led)?1:"0,0".equals(led)?0:-1);
+            }
+            if(ayn||get("vibrate_on")>=0)j.put("vibration",Settings.System.getInt(resolver,"vibrate_on",1));
             j.put("ack",lastId).put("error",lastError);
         } catch(Exception e) { try { j.put("error","Could not read controls"); } catch(Exception ignored) {} }
         return j;
@@ -162,7 +180,7 @@ final class ThorControls {
                 if(!(raw instanceof String))throw new IllegalArgumentException("App identifier required");
                 AppCatalog.action(context,key,(String)raw,target);MonitorService.refreshFocusedApps();return true;
             }
-            if(key.equals("ftp_start")||key.equals("ftp_stop")||key.equals("ftp_status")) {
+            if(key.equals("ftp_start")||key.equals("ftp_stop")||key.equals("ftp_status")||key.equals("ftp_keep_on")||key.equals("ftp_keep_off")) {
                 if(!(raw instanceof Number)||((Number)raw).doubleValue()!=0)throw new IllegalArgumentException("Invalid FTP action");
                 historyPage=FtpAccess.command(context,key,id).put("svc",HostServices.bits(context));return true;
             }
@@ -200,6 +218,14 @@ final class ThorControls {
                 if(key.equals("screenshot_clear"))clearShot();else streamRequested=true;
                 return true;
             }
+            if(key.equals("input")) {
+                if(!target.equals("top")&&!target.equals("bottom"))throw new IllegalArgumentException("Choose Top or Bottom");
+                JSONObject request=new JSONObject().put("set","input").put("value",LiveStream.integer(j,"value",0,3)).put("d",target.equals("top")?0:1);
+                for(String k:new String[]{"x","y","x2","y2","ms"})if(j.has(k))request.put(k,j.get(k));
+                LiveStream.inputCommand(request,new int[]{0,1,1}); // reject bad coordinates before the helper sees them
+                if(!helper(request))throw new IllegalStateException("Remote input unavailable. Check Controls recovery.");
+                return true;
+            }
             if(key.equals("text") || key.equals("key")) {
                 if(!(raw instanceof String)) throw new IllegalArgumentException("Keyboard text required");
                 RemoteKeyboard.input(context,key,(String)raw);
@@ -222,32 +248,33 @@ final class ThorControls {
                 case "brightness":
                     range(value,0,100); target(target);
                     int bright=Math.max(1,Math.round(value*255f/100));
+                    if(!vendorDisplay()){
+                        if(target.equals("bottom"))throw new IllegalArgumentException("This device has one screen");
+                        put("brightness",bright);break;
+                    }
                     if (!target.equals("bottom")) brightness(0,bright);
                     if (!target.equals("top")) brightness(bottom(),bright);
                     break;
                 case "volume":
-                    if(FindThor.volumeLocked())throw new IllegalStateException("Volume is locked while Find my Thor is playing. Stop the sound first.");
+                    if(FindThor.volumeLocked())throw new IllegalStateException("Volume is locked while "+ThorModel.findLabel()+" is playing. Stop the sound first.");
                     range(value,0,100); target(target);
                     int volume=Math.round(value*audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)/100f);
-                    if (!target.equals("top")) put("volume",volume);
+                    if (!target.equals("top")&&bottom()>=0) put("volume",volume);
                     if (!target.equals("bottom")) audio.setStreamVolume(AudioManager.STREAM_MUSIC,volume,0);
                     break;
                 case "hz":
                     if(value!=60 && value!=120) throw new IllegalArgumentException("Choose 60 or 120 Hz");
-                    boolean supported=false;
-                    for(Display.Mode mode: context.getSystemService(DisplayManager.class).getDisplay(0).getSupportedModes())
-                        if(Math.abs(mode.getRefreshRate()-value)<1) supported=true;
-                    if(!supported) throw new IllegalArgumentException("Refresh rate unsupported");
+                    if(!supportsHz(60)||!supportsHz(120)) throw new IllegalArgumentException("Refresh rate unsupported");
                     put("hz",value);
                     break;
-                case "fan":
+                case "fan": aynOnly();
                     if(value!=0 && value!=1 && value!=4 && value!=5) throw new IllegalArgumentException("Unsupported fan mode");
                     put("fan",value); break;
-                case "performance": range(value,0,2); put("performance",value); break;
-                case "focus": range(value,0,2); put("focus",value); break;
-                case "bypass": range(value,0,1); put("bypass",value); break;
+                case "performance": aynOnly(); range(value,0,2); put("performance",value); break;
+                case "focus": aynOnly(); range(value,0,2); put("focus",value); break;
+                case "bypass": aynOnly(); range(value,0,1); put("bypass",value); break;
                 case "vibration": range(value,0,1); put("vibration",value); break;
-                case "style":
+                case "style": aynOnly();
                     range(value,0,2);
                     if(!helper("style",value)) throw new IllegalStateException("Check Automatic recovery setup in Thor Monitor");
                     break;
@@ -255,7 +282,7 @@ final class ThorControls {
                     range(value,0,0);
                     if(!helper("clean",0)) throw new IllegalStateException("Background cleanup failed; check advanced controls");
                     break;
-                case "led":
+                case "led": aynOnly();
                     range(value,0,1);
                     if(!helper("led",value)) throw new IllegalStateException("Check Automatic recovery setup in Thor Monitor");
                     break;

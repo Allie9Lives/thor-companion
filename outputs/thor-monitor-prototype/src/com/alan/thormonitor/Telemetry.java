@@ -37,6 +37,8 @@ final class Telemetry {
             String soc = Build.SOC_MODEL;
             String maker = Build.SOC_MANUFACTURER;
             String variant = ThorModel.variant(Build.MODEL, soc, mem.totalMem);
+            j.put("product", ThorModel.product(Build.MANUFACTURER, Build.MODEL)).put("family", ThorModel.family(Build.MANUFACTURER, Build.MODEL));
+            j.put("screens", ThorControls.screens(c));
             j.put("variant", variant == null ? JSONObject.NULL : variant);
             j.put("soc_model", soc);
             Long storageCapacity = ThorModel.storageCapacity(fs.getTotalBytes());
@@ -45,7 +47,7 @@ final class Telemetry {
             j.put("cpu_name", cpuName != null ? cpuName : soc == null || soc.equals(Build.UNKNOWN) ? JSONObject.NULL :
                 (("QTI".equalsIgnoreCase(maker) ? "Qualcomm" : maker) + " " + soc).trim());
             String gpuModel = read("/sys/class/kgsl/kgsl-3d0/gpu_model");
-            java.util.regex.Matcher gpuName = java.util.regex.Pattern.compile("(?i)Adreno\\s*([0-9]+)").matcher(gpuModel);
+            java.util.regex.Matcher gpuName = java.util.regex.Pattern.compile("(?i)Adreno\\s*(A?[0-9]+)").matcher(gpuModel);
             j.put("gpu_name", gpuName.find() ? "Adreno " + gpuName.group(1) : JSONObject.NULL);
             j.put("ram_total_bytes", mem.totalMem).put("ram_available_bytes", mem.availMem);
             CpuUsage.Reading usage = cpu.sample(read("/proc/stat"), SystemClock.elapsedRealtime());
@@ -95,8 +97,28 @@ final class Telemetry {
             String v = read("/sys/devices/platform/soc/1d84000.ufshc/device_descriptor/specification_version");
             j.put("ufs_descriptor", v);
             j.put("ufs_version", v.equals("0x0400") ? "4.0" : v.equals("0x0310") ? "3.1" : "unknown");
+            j.put("storage_standard", storageStandard(v));
+            if (j.optString("storage_model").equals("unavailable") && read("/sys/block/mmcblk0/device/type").equals("MMC"))
+                j.put("storage_model", read("/sys/block/mmcblk0/device/name"));
         } catch (Exception e) { try { j.put("error", e.toString()); } catch (Exception ignored) {} }
         return j;
+    }
+
+    /** "UFS 4.0", "eMMC 5.1"… or null. eMMC devices (e.g. Retroid Pocket Classic) have no UFS descriptor. */
+    static String storageStandard(String ufsDescriptor) {
+        String ufs = storageStandardFor(ufsDescriptor, null, null);
+        return ufs != null ? ufs : storageStandardFor(null, read("/sys/block/mmcblk0/device/type"), read("/sys/block/mmcblk0/device/rev"));
+    }
+    static String storageStandardFor(String ufsDescriptor, String mmcType, String mmcRev) {
+        if (ufsDescriptor != null) switch (ufsDescriptor) {
+            case "0x0400": return "UFS 4.0"; case "0x0310": return "UFS 3.1"; case "0x0300": return "UFS 3.0";
+            case "0x0220": return "UFS 2.2"; case "0x0210": return "UFS 2.1"; default: break;
+        }
+        if (!"MMC".equals(mmcType)) return null;
+        // EXT_CSD revision: 8 = eMMC 5.1, 7 = 5.0, 6 = 4.5.
+        switch (mmcRev == null ? "" : mmcRev) {
+            case "0x8": return "eMMC 5.1"; case "0x7": return "eMMC 5.0"; case "0x6": return "eMMC 4.5"; default: return "eMMC";
+        }
     }
 
     // StorageVolume also includes USB disks. Match its mounted block device to

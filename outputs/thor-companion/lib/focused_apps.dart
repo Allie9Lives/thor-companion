@@ -11,12 +11,14 @@ class FocusedApps extends StatefulWidget {
     this.onOpenDrawer,
     this.device,
     this.imageConnection,
+    this.screens = 2,
   });
   final List<Map<String, dynamic>> apps;
   final bool? interactive;
   final ValueChanged<String>? onOpenDrawer;
   final String? device;
   final Future<ThorFiles?> Function()? imageConnection;
+  final int screens;
   @override
   State<FocusedApps> createState() => _FocusedAppsState();
 }
@@ -95,7 +97,11 @@ class _FocusedAppsState extends State<FocusedApps> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    top ? 'TOP SCREEN' : 'BOTTOM SCREEN',
+                    widget.screens == 1
+                        ? 'SCREEN'
+                        : top
+                        ? 'TOP SCREEN'
+                        : 'BOTTOM SCREEN',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 12,
@@ -178,18 +184,20 @@ class _FocusedAppsState extends State<FocusedApps> {
             ],
             const SizedBox(height: 14),
             Center(child: SizedBox(width: 220, child: screen(true))),
-            Center(
-              child: Container(
-                width: 80,
-                height: 5,
-                margin: const EdgeInsets.symmetric(vertical: 5),
-                decoration: BoxDecoration(
-                  color: p.border,
-                  borderRadius: BorderRadius.circular(3),
+            if (widget.screens > 1) ...[
+              Center(
+                child: Container(
+                  width: 80,
+                  height: 5,
+                  margin: const EdgeInsets.symmetric(vertical: 5),
+                  decoration: BoxDecoration(
+                    color: p.border,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
                 ),
               ),
-            ),
-            Center(child: SizedBox(width: 180, child: screen(false))),
+              Center(child: SizedBox(width: 180, child: screen(false))),
+            ],
           ],
         ),
       ),

@@ -93,6 +93,7 @@ class _ScreenshotPageState extends State<ScreenshotPage> {
   }
 
   Future<void> capture() async {
+    if (widget.controller.singleScreen) mode = 0;
     setState(() {
       busy = true;
       saved = false;
@@ -155,7 +156,7 @@ class _ScreenshotPageState extends State<ScreenshotPage> {
               ? e.message
               : e is StateError
               ? e.message
-              : 'Could not transfer the screenshot over Wi-Fi. Check the connection and keep the Thor open and unlocked.';
+              : 'Could not transfer the screenshot over Wi-Fi. Check the connection and keep the device open and unlocked.';
         });
       }
     } finally {
@@ -217,7 +218,7 @@ class _ScreenshotPageState extends State<ScreenshotPage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Text(
-                'Save screenshots or recordings from your Thor to Photos.',
+                'Save screenshots or recordings from your device to Photos.',
                 style: TextStyle(fontSize: 16),
               ),
               const SizedBox(height: 16),
@@ -229,8 +230,8 @@ class _ScreenshotPageState extends State<ScreenshotPage> {
                 notice(
                   'Screenshot setup',
                   network.status!['wifi'] != true
-                      ? 'Connect the Thor to Wi-Fi.'
-                      : 'Advanced controls are unavailable. Check Recovery setup on the Thor.',
+                      ? 'Connect the device to Wi-Fi.'
+                      : 'Advanced controls are unavailable. Check Recovery setup on the device.',
                   warning: true,
                 ),
               ],
@@ -264,23 +265,24 @@ class _ScreenshotPageState extends State<ScreenshotPage> {
                   },
                 ),
               if (captureKind == 0) ...[
-                SegmentedButton<int>(
-                  segments: const [
-                    ButtonSegment(value: 0, label: Text('Top')),
-                    ButtonSegment(value: 1, label: Text('Bottom')),
-                    ButtonSegment(value: 2, label: Text('Both')),
-                  ],
-                  selected: {mode},
-                  onSelectionChanged: busy
-                      ? null
-                      : (v) => setState(() {
-                          mode = v.single;
-                          image = null;
-                          saved = false;
-                          error = null;
-                          status = '';
-                        }),
-                ),
+                if (!c.singleScreen)
+                  SegmentedButton<int>(
+                    segments: const [
+                      ButtonSegment(value: 0, label: Text('Top')),
+                      ButtonSegment(value: 1, label: Text('Bottom')),
+                      ButtonSegment(value: 2, label: Text('Both')),
+                    ],
+                    selected: {mode},
+                    onSelectionChanged: busy
+                        ? null
+                        : (v) => setState(() {
+                            mode = v.single;
+                            image = null;
+                            saved = false;
+                            error = null;
+                            status = '';
+                          }),
+                  ),
                 const SizedBox(height: 12),
                 if (mode == 2)
                   const Text(
@@ -331,7 +333,7 @@ class _ScreenshotPageState extends State<ScreenshotPage> {
                 ],
                 const SizedBox(height: 16),
                 const Text(
-                  'Screenshots use the encrypted network connection. Keep the Thor open and unlocked. Images are saved on this device.',
+                  'Screenshots use the encrypted network connection. Keep the device open and unlocked. Images are saved on this device.',
                   style: TextStyle(fontSize: 14),
                 ),
               ],

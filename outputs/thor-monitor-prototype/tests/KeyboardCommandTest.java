@@ -2,7 +2,7 @@ package com.alan.thormonitor;
 public class KeyboardCommandTest {
     static void rejected(Runnable r) { try { r.run(); throw new AssertionError("Accepted invalid input"); } catch(IllegalArgumentException expected) {} }
     public static void main(String[] args) {
-        KeyboardCommand.text("Thor — café 👾 中文\n\t'$()`;%s");
+        KeyboardCommand.text("Device — café 👾 中文\n\t'$()`;%s");
         KeyboardCommand.text(new String(new char[120]).replace('\0','a'));
         rejected(()->KeyboardCommand.text(""));
         rejected(()->KeyboardCommand.text(new String(new char[121]).replace('\0','a')));

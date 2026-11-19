@@ -78,7 +78,7 @@ void main() {
       c.receivedCount = 0;
       c.lastFailure = StateError('GATT_INSUFFICIENT_AUTHENTICATION');
       c.lastFailureStage = 'Device reading';
-      c.error = 'Could not read the Thor.';
+      c.error = 'Could not read the device.';
       await t.pumpWidget(
         MaterialApp(home: ConnectionHealthPage(controller: c)),
       );

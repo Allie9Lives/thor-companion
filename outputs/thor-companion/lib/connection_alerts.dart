@@ -5,7 +5,7 @@ class ConnectionAlertTracker {
   bool? wifiConnected;
   bool? portal;
   String? wifiName;
-  bool everBluetooth = false, lostSent = false;
+  bool everBluetooth = false, lostScheduled = false;
   DateTime? lostAt;
 
   List<BatteryAlert> wifi(
@@ -49,25 +49,36 @@ class ConnectionAlertTracker {
     ];
   }
 
+  static const lossDelay = Duration(seconds: 15);
+
+  /// Returns alerts to show; a key in [cancel] means drop that pending alert.
   List<BatteryAlert> bluetooth(
     bool connected,
     bool eligible,
     BatteryAlertOptions options,
     String device,
-    DateTime now,
-  ) {
+    DateTime now, {
+    List<String>? cancel,
+  }) {
+    // The loss alert is handed to the OS with a delay: Dart timers stop while
+    // iOS suspends the app, which used to hold it until the reconnect wake-up.
+    final lostShown = lostAt != null && now.difference(lostAt!) >= lossDelay;
+    if (lostAt != null && lostScheduled && !lostShown) {
+      if (connected || !eligible || !options.enabled) {
+        cancel?.add('bluetoothLost');
+      }
+    }
     if (!eligible || !options.enabled) {
       lostAt = null;
-      lostSent = false;
+      lostScheduled = false;
       everBluetooth = connected;
       return [];
     }
     if (connected) {
-      final notify = lostSent && options.bluetoothBack;
       everBluetooth = true;
       lostAt = null;
-      lostSent = false;
-      return notify
+      lostScheduled = false;
+      return lostShown && options.bluetoothBack
           ? [
               BatteryAlert(
                 'bluetoothBack',
@@ -77,16 +88,16 @@ class ConnectionAlertTracker {
             ]
           : [];
     }
-    if (!everBluetooth || lostSent) return [];
-    lostAt ??= now;
-    if (now.difference(lostAt!) < const Duration(seconds: 15)) return [];
-    lostSent = true;
-    return options.bluetoothLost
+    if (!everBluetooth || lostAt != null) return [];
+    lostAt = now;
+    lostScheduled = options.bluetoothLost;
+    return lostScheduled
         ? [
             BatteryAlert(
               'bluetoothLost',
               device,
-              'Bluetooth connection lost. The Thor may be out of range.',
+              'Bluetooth connection lost. The device may be out of range.',
+              delay: lossDelay.inSeconds,
             ),
           ]
         : [];

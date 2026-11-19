@@ -42,8 +42,9 @@ class ScreenshotReceiver {
     _idle?.cancel();
     _idle = Timer(
       const Duration(seconds: 12),
-      () =>
-          fail('Screenshot transfer stopped. Try again with the Thor nearby.'),
+      () => fail(
+        'Screenshot transfer stopped. Try again with the device nearby.',
+      ),
     );
   }
 

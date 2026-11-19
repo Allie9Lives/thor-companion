@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'design_components.dart';
 import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/services.dart';
 
@@ -63,13 +64,14 @@ class AppPalette extends ThemeExtension<AppPalette> {
     Color(0xFF70563E),
     appearance: AppAppearance.clearPurple,
   );
+  // Rainbow base is C6C4C0; text and accents are darkened to keep contrast on it.
   static const rainbow = AppPalette(
-    Color(0xFFFAFBFD),
-    Colors.white,
-    Color(0xFFDCE2EB),
+    Color(0xFFC6C4C0),
+    Color(0xFFC6C4C0),
+    Color(0xFFA8A59F),
     Color(0xFF202630),
-    Color(0xFF596474),
-    Color(0xFF285BC5),
+    Color(0xFF48515E),
+    Color(0xFF224CA5),
     Colors.white,
     Color(0xFF8A4F00),
     Color(0xFFFFF4E3),
@@ -82,7 +84,7 @@ class AppPalette extends ThemeExtension<AppPalette> {
       : accent;
   bool get isRainbow => appearance == AppAppearance.rainbow;
   List<Color> get rainbowColors => const [
-    Color(0xFFC08A00),
+    Color(0xFF8D6500),
     Color(0xFF24794B),
     Color(0xFF285BC5),
     Color(0xFFBA4141),
@@ -179,7 +181,7 @@ ThemeData appTheme(
     pageTransitionsTheme: const PageTransitionsTheme(
       builders: {
         TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-        TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+        TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
         TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
       },
     ),
@@ -211,6 +213,19 @@ ThemeData appTheme(
         fontWeight: FontWeight.w600,
         letterSpacing: -0.5,
       ),
+    ),
+    sliderTheme: SliderThemeData(
+      activeTrackColor: p.accent,
+      inactiveTrackColor: p.border,
+      thumbColor: p.accent,
+      disabledThumbColor: p.secondaryText,
+      disabledActiveTrackColor: p.secondaryText.withValues(alpha: .5),
+      disabledInactiveTrackColor: p.border,
+      overlayColor: Colors.transparent,
+      overlayShape: SliderComponentShape.noOverlay,
+      thumbShape: const GlowThumbShape(),
+      trackHeight: 5,
+      tickMarkShape: SliderTickMarkShape.noTickMark,
     ),
     switchTheme: SwitchThemeData(
       thumbColor: WidgetStateProperty.resolveWith(

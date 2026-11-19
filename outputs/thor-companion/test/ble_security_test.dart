@@ -47,7 +47,9 @@ void main() {
   test('ordinary failures are not treated as pairing problems', () {
     expect(of('TimeoutException after 0:00:45'), BleSecurityFailure.none);
     expect(
-      of('GATT exception from MAC address X, status 133 (GATT_ERROR), type read.'),
+      of(
+        'GATT exception from MAC address X, status 133 (GATT_ERROR), type read.',
+      ),
       BleSecurityFailure.none,
     );
   });

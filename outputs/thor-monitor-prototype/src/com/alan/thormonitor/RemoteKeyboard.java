@@ -39,12 +39,12 @@ public final class RemoteKeyboard extends InputMethodService {
         if (!selected(c)) throw new IllegalStateException("Select Thor Remote Keyboard in Thor Monitor first");
         // No remote typing into the lock screen, and no delayed replay after unlock.
         if (c.getSystemService(KeyguardManager.class).isKeyguardLocked() || !c.getSystemService(PowerManager.class).isInteractive())
-            throw new IllegalStateException("Open and unlock the Thor to type");
+            throw new IllegalStateException("Open and unlock the device to type");
         FutureTask<Void> task=new FutureTask<>(()->{
             RemoteKeyboard k=instance;
             if(k==null || !focused() || !k.isInputViewShown() || k.getCurrentInputConnection()==null ||
                 k.getCurrentInputEditorInfo()==null || k.getCurrentInputEditorInfo().inputType==android.text.InputType.TYPE_NULL)
-                throw new IllegalStateException("Tap a text field on the Thor first");
+                throw new IllegalStateException("Tap a text field on the device first");
             InputConnection ic=k.getCurrentInputConnection();
             if(command.equals("text")) {
                 if(!ic.commitText(value,1)) throw new IllegalStateException("The focused app did not accept text");
@@ -62,7 +62,7 @@ public final class RemoteKeyboard extends InputMethodService {
         });
         if(Looper.myLooper()==Looper.getMainLooper())task.run();else new Handler(Looper.getMainLooper()).post(task);
         try { task.get(2,TimeUnit.SECONDS); }
-        catch(TimeoutException e) { task.cancel(false);throw new IllegalStateException("Keyboard timed out. Check the Thor before sending again"); }
+        catch(TimeoutException e) { task.cancel(false);throw new IllegalStateException("Keyboard timed out. Check the device before sending again"); }
         catch(ExecutionException e) { throw new IllegalStateException(e.getCause().getMessage()); }
     }
 }

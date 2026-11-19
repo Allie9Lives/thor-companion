@@ -17,7 +17,7 @@ import org.apache.ftpserver.ssl.*;
 import org.apache.ftpserver.usermanager.UsernamePasswordAuthentication;
 import org.apache.ftpserver.usermanager.impl.*;
 
-/** Optional explicit FTPS. Session credentials are memory-only and replaced on every start. */
+/** Optional explicit FTPS. The password is new on every start unless the owner chose to keep it (stored in app-private prefs). */
 final class FtpAccess {
     static final int PORT=47221;
     private static FtpServer server;
@@ -32,8 +32,12 @@ final class FtpAccess {
         if(app!=null)app.getSystemService(NotificationManager.class).cancel(24);
     }
     static synchronized JSONObject command(Context c,String action,String id)throws Exception{
-        if(action.equals("ftp_start"))start(c);else if(action.equals("ftp_stop"))stop();else if(!action.equals("ftp_status"))throw new IllegalArgumentException("Unknown FTP action");
-        JSONObject result=new JSONObject().put("ack",id).put("error","").put("running",running()).put("allowed",SharedFiles.enabled(c));
+        android.content.SharedPreferences prefs=c.getSharedPreferences("monitor",0);
+        if(action.equals("ftp_start"))start(c);else if(action.equals("ftp_stop"))stop();
+        else if(action.equals("ftp_keep_on"))prefs.edit().putBoolean("ftp_keep",true).putString("ftp_password",running()?password:prefs.getString("ftp_password","")).apply();
+        else if(action.equals("ftp_keep_off"))prefs.edit().putBoolean("ftp_keep",false).remove("ftp_password").apply();
+        else if(!action.equals("ftp_status"))throw new IllegalArgumentException("Unknown FTP action");
+        JSONObject result=new JSONObject().put("ack",id).put("error","").put("running",running()).put("allowed",SharedFiles.enabled(c)).put("keep",prefs.getBoolean("ftp_keep",false));
         if(running())result.put("user","thor").put("password",password).put("port",PORT).put("pin",FileAccess.certificatePin()).put("hosts",addresses());
         return result;
     }
@@ -44,9 +48,12 @@ final class FtpAccess {
     }
     private static synchronized void start(Context c)throws Exception{
         if(running())return;
-        if(!MonitorService.running)throw new IllegalStateException("Start monitoring on the Thor first");
+        if(!MonitorService.running)throw new IllegalStateException("Start monitoring on the device first");
         if(!SharedFiles.enabled(c))throw new IllegalStateException("In Thor Monitor → Settings → Wi-Fi access, allow Shared storage permission and enable Share storage roots first.");
-        app=c.getApplicationContext();byte[] secret=new byte[18];new SecureRandom().nextBytes(secret);final String credential=android.util.Base64.encodeToString(secret,android.util.Base64.NO_WRAP|android.util.Base64.URL_SAFE|android.util.Base64.NO_PADDING);
+        app=c.getApplicationContext();byte[] secret=new byte[18];new SecureRandom().nextBytes(secret);
+        android.content.SharedPreferences prefs=c.getSharedPreferences("monitor",0);String kept=prefs.getBoolean("ftp_keep",false)?prefs.getString("ftp_password",""):"";
+        final String credential=kept.matches("[A-Za-z0-9_-]{24}")?kept:android.util.Base64.encodeToString(secret,android.util.Base64.NO_WRAP|android.util.Base64.URL_SAFE|android.util.Base64.NO_PADDING);
+        if(prefs.getBoolean("ftp_keep",false))prefs.edit().putString("ftp_password",credential).apply();
         final SSLContext tls=FileAccess.tlsContext(c);
         SslConfiguration ssl=new SslConfiguration(){
             public SSLContext getSSLContext(){return tls;}public SSLContext getSSLContext(String protocol){return tls;}

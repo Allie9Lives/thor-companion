@@ -45,7 +45,7 @@ void main() {
       ),
     );
     await t.pumpAndSettle();
-    expect(find.text('Thor Wi-Fi'), findsOneWidget);
+    expect(find.text('Device Wi-Fi'), findsOneWidget);
     expect(find.text('Follow phone Wi-Fi'), findsOneWidget);
     expect(t.takeException(), isNull);
     await t.drag(find.byType(ListView), const Offset(0, -450));
@@ -63,7 +63,7 @@ void main() {
         rememberDevice: false,
       );
       await Future<void>.delayed(const Duration(milliseconds: 20));
-      await controller.connect(const NearbyThor('thor', 'Thor', -50));
+      await controller.connect(const NearbyThor('thor', 'Device', -50));
       ble.links.add(LinkState.connected);
       await Future<void>.delayed(const Duration(milliseconds: 40));
       final password = 'q"\\a' * 12;

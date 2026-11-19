@@ -17,6 +17,7 @@ import 'file_transfer.dart';
 import 'network_endpoint.dart';
 import 'connection_alerts.dart';
 import 'wifi_delegation.dart';
+import 'saved_devices.dart';
 
 enum CompanionPhase { idle, scanning, connecting, connected }
 
@@ -47,9 +48,10 @@ class CompanionController extends ChangeNotifier {
         if (value == RadioState.ready && previous != RadioState.ready) {
           _backgroundAttempted = false;
         }
-        if (value == RadioState.off ||
-            value == RadioState.unauthorized ||
-            value == RadioState.unavailable) {
+        if (!_networkKnown &&
+            (value == RadioState.off ||
+                value == RadioState.unauthorized ||
+                value == RadioState.unavailable)) {
           if (!_manualRecoveryRequired) error = radioMessage;
           unawaited(_radioUnavailable());
         }
@@ -143,7 +145,7 @@ class CompanionController extends ChangeNotifier {
       cpuName: 'Qualcomm Snapdragon 8 Gen 2',
       socModel: 'QCS8550',
       variant: 'Max',
-      deviceName: 'My Thor',
+      deviceName: 'My device',
       storageCapacityBytes: 1000000000000,
       gpuName: 'Adreno 740',
     );
@@ -181,7 +183,11 @@ class CompanionController extends ChangeNotifier {
   final Duration Function(int)? _retryDelay;
   final Future<void> Function(BatteryWidgetSnapshot?)? _batteryPublisher;
   bool automaticReconnect = true;
-  bool _wantsConnection = false, _foreground = true;
+  bool _wantsConnection = false, _foreground = true, _savedNetwork = false;
+
+  /// A Wi-Fi/VPN path to this Thor is known, so Bluetooth is a fallback only.
+  bool get _networkKnown =>
+      _savedNetwork || (adaptive?.knownNetworkHosts.isNotEmpty ?? false);
   bool _manualRecoveryRequired = false, _hostAuthorizationRequired = false;
   bool get hostAuthorizationRequired => _hostAuthorizationRequired;
   bool get appInForeground => _foreground;
@@ -260,6 +266,23 @@ class CompanionController extends ChangeNotifier {
     }
   }
 
+  /// Every paired handheld, in pairing order. [remembered] is the active one.
+  List<SavedDevice> devices = [];
+
+  /// The handheld whose Wi-Fi/VPN credentials are in the active native slot.
+  String? _slotOwner;
+
+  /// Built-in screens on the connected handheld (Thor 2, most others 1).
+  int get screens => hardware?.screens ?? 2;
+  bool get singleScreen => screens == 1;
+
+  /// "Find my Thor" / "Find my Retroid" / "Find my handheld".
+  String get findLabel =>
+      'Find my ${switch (hardware?.product) {
+        'Retroid Pocket Classic' => 'Retroid',
+        'Handheld Device' => 'handheld',
+        _ => 'Thor',
+      }}';
   String get deviceDisplayName =>
       hardware?.deviceName ?? selected?.name ?? 'AYN Thor';
   Map<String, dynamic>? activity;
@@ -301,7 +324,7 @@ class CompanionController extends ChangeNotifier {
         selected == null ||
         isDemo ||
         _detailsPending) {
-      throw StateError('Connect to the Thor over Bluetooth first.');
+      throw StateError('Connect to the device over Bluetooth first.');
     }
     _detailsPending = true;
     final session = _session, device = selected!.id;
@@ -317,7 +340,7 @@ class CompanionController extends ChangeNotifier {
             session != _session ||
             !connected ||
             DateTime.now().isAfter(deadline)) {
-          throw StateError('The Thor is busy. Try again.');
+          throw StateError('The device is busy. Try again.');
         }
         await Future<void>.delayed(const Duration(milliseconds: 20));
       }
@@ -361,7 +384,7 @@ class CompanionController extends ChangeNotifier {
         throw StateError(
           j['error'] is String && (j['error'] as String).isNotEmpty
               ? j['error'] as String
-              : 'Could not read this Thor feature.',
+              : 'Could not read this device feature.',
         );
       }
       return j;
@@ -561,7 +584,7 @@ class CompanionController extends ChangeNotifier {
       if (wifiVisible) {
         wifiError = e is StateError
             ? e.message
-            : 'Could not read Wi-Fi. Check Controls recovery on the Thor.';
+            : 'Could not read Wi-Fi. Check Controls recovery on the device.';
       }
     } finally {
       _wifiPolling = false;
@@ -594,13 +617,18 @@ class CompanionController extends ChangeNotifier {
         !readingsPaused &&
         !_manualRecoveryRequired &&
         !powerBusy;
+    final cancel = <String>[];
     final alerts = _connectionAlerts.bluetooth(
       bluetoothAvailable,
       eligible,
       batteryAlertOptions,
       deviceDisplayName,
       DateTime.now(),
+      cancel: cancel,
     );
+    for (final key in cancel) {
+      unawaited(cancelBatteryAlert(key).catchError((Object _) {}));
+    }
     for (final alert in alerts) {
       unawaited(showBatteryAlert(alert).catchError((Object _) {}));
     }
@@ -711,7 +739,7 @@ class CompanionController extends ChangeNotifier {
           .toList();
       if (matches.length != 1) {
         followStatus = matches.isEmpty
-            ? 'Save $name on the Thor first.'
+            ? 'Save $name on the device first.'
             : 'Choose $name manually; more than one saved configuration matches.';
         _lastFollow = observation.event;
         return;
@@ -990,7 +1018,7 @@ class CompanionController extends ChangeNotifier {
           }
 
           logBle(
-            'Thor battery history synced: ${samples.length} recorded samples',
+            'Device battery history synced: ${samples.length} recorded samples',
           );
           if (_rememberDevice) {
             await SharedPreferencesAsync().setString(
@@ -1075,7 +1103,7 @@ class CompanionController extends ChangeNotifier {
         selected == null ||
         isDemo ||
         powerBusy) {
-      throw StateError('Wait for the Thor connection, then try again.');
+      throw StateError('Wait for the device connection, then try again.');
     }
     final session = _session, device = selected!.id;
     var ownsTransaction = false;
@@ -1088,7 +1116,7 @@ class CompanionController extends ChangeNotifier {
             session != _session ||
             !connected ||
             DateTime.now().isAfter(deadline)) {
-          throw StateError('The Thor is busy or disconnected. Try again.');
+          throw StateError('The device is busy or disconnected. Try again.');
         }
         await Future<void>.delayed(const Duration(milliseconds: 20));
       }
@@ -1097,7 +1125,7 @@ class CompanionController extends ChangeNotifier {
           !connected ||
           (stale && !(action == 3 && keepAlivePaused))) {
         throw StateError(
-          'The Thor connection changed. Check it before trying again.',
+          'The device connection changed. Check it before trying again.',
         );
       }
       ownsTransaction = controlBusy = true;
@@ -1117,7 +1145,7 @@ class CompanionController extends ChangeNotifier {
       );
       if (session != _session || reply['ack'] != id || reply['error'] != '') {
         throw StateError(
-          'Could not confirm the power command. Check the Thor before retrying.',
+          'Could not confirm the power command. Check the device before retrying.',
         );
       }
       if (reply['sleep_suspended'] is bool) {
@@ -1163,7 +1191,7 @@ class CompanionController extends ChangeNotifier {
         selected == null ||
         isDemo ||
         !notificationsRequested) {
-      throw StateError('Wait for the Thor connection, then try again.');
+      throw StateError('Wait for the device connection, then try again.');
     }
     if (controls?.values['screenshots'] != true) {
       throw StateError('Update Thor Monitor to capture screenshots.');
@@ -1216,7 +1244,7 @@ class CompanionController extends ChangeNotifier {
       if (reply.values['ack'] != id || reply.values['error'] != '') {
         throw StateError(
           reply.values['error'] as String? ??
-              'The Thor did not confirm the capture.',
+              'The device did not confirm the capture.',
         );
       }
       token = reply.values['shot_token'] as String?;
@@ -1228,7 +1256,7 @@ class CompanionController extends ChangeNotifier {
           length == null ||
           crc == null) {
         throw StateError(
-          'Screenshot unavailable. Check Automatic recovery on the Thor.',
+          'Screenshot unavailable. Check Automatic recovery on the device.',
         );
       }
       final receiver = ScreenshotReceiver(number, length, crc, (progress) {
@@ -1286,6 +1314,74 @@ class CompanionController extends ChangeNotifier {
   bool keyboardBusy = false;
   int _keyboardRequest = 0;
 
+  /// Tap (0), swipe (1), Back (2) or Home (3) on one Thor screen ('top' or
+  /// 'bottom'). Positions are 0–10000 fractions of that screen. Returns an error
+  /// message, or null when the Thor confirmed the input.
+  Future<String?> sendRemoteInput(
+    String screen,
+    int action, {
+    int? x,
+    int? y,
+    int? x2,
+    int? y2,
+    int? ms,
+  }) async {
+    if (_transport is! ControlTransport ||
+        !connected ||
+        selected == null ||
+        isDemo) {
+      return 'Wait for the device connection, then try again.';
+    }
+    // Routine refreshes hold the control channel briefly; wait for a turn.
+    for (var i = 0; controlBusy && i < 100; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+    if (controlBusy || !connected || selected == null) {
+      return 'The device is busy. Try again.';
+    }
+    final session = _session, device = selected!.id;
+    controlBusy = true;
+    try {
+      final id = '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}_i';
+      final bytes = utf8.encode(
+        jsonEncode({
+          'id': id,
+          'set': 'input',
+          'value': action,
+          'target': screen,
+          'x': ?x,
+          'y': ?y,
+          'x2': ?x2,
+          'y2': ?y2,
+          'ms': ?ms,
+        }),
+      );
+      await (_transport as ControlTransport)
+          .writeControl(device, bytes)
+          .timeout(const Duration(seconds: 10));
+      final response = await _transport!
+          .read(device, controlId)
+          .timeout(const Duration(seconds: 10));
+      if (_disposed || session != _session) return 'Connection ended.';
+      final result = ThorControlState.fromBytes(response);
+      controls = result;
+      if (result.values['ack'] != id) {
+        return 'The device did not confirm the input.';
+      }
+      final error = result.values['error'] as String? ?? '';
+      if (error.isEmpty) return null;
+      return error.contains('Unsupported control')
+          ? 'Update Thor Monitor to use remote touch.'
+          : error.replaceFirst('Control failed: ', '');
+    } catch (_) {
+      return 'Could not reach the device.';
+    } finally {
+      controlBusy = false;
+      _flushRefreshAfterControl();
+      _notify();
+    }
+  }
+
   Future<bool> sendKeyboardText(String text) async {
     try {
       return await _sendKeyboard(
@@ -1322,7 +1418,7 @@ class CompanionController extends ChangeNotifier {
         controlBusy ||
         selected == null ||
         isDemo) {
-      keyboardError = 'Wait for the Thor connection, then try again.';
+      keyboardError = 'Wait for the device connection, then try again.';
       _notify();
       return false;
     }
@@ -1363,11 +1459,12 @@ class CompanionController extends ChangeNotifier {
         final result = ThorControlState.fromBytes(response);
         controls = result;
         if (result.values['ack'] != id) {
-          throw StateError('The Thor did not confirm the input.');
+          throw StateError('The device did not confirm the input.');
         }
         if (result.values['error'] != '') {
           throw StateError(
-            result.values['error'] as String? ?? 'The Thor rejected the input.',
+            result.values['error'] as String? ??
+                'The device rejected the input.',
           );
         }
         sent++;
@@ -1377,7 +1474,7 @@ class CompanionController extends ChangeNotifier {
       // Never log text or retry non-idempotent input after an uncertain result.
       keyboardError =
           '${e is StateError ? e.message : "Could not confirm the input."} '
-          '${sent > 0 ? "Part of the text was sent. " : ""}Check the Thor before sending again.';
+          '${sent > 0 ? "Part of the text was sent. " : ""}Check the device before sending again.';
       return false;
     } finally {
       controlBusy = keyboardBusy = false;
@@ -1577,7 +1674,7 @@ class CompanionController extends ChangeNotifier {
       } else {
         if (!matches(result)) {
           controlError =
-              'The Thor reported a different value. Its current settings are shown.';
+              'The device reported a different value. Its current settings are shown.';
         }
       }
     } catch (e) {
@@ -1625,11 +1722,11 @@ class CompanionController extends ChangeNotifier {
       ? 'Monitoring paused · last readings shown'
       : ageLabel(receivedAt, DateTime.now());
   String get radioMessage => switch (radioState) {
-    RadioState.off => 'Turn on Bluetooth on your phone to find your Thor.',
+    RadioState.off => 'Turn on Bluetooth on your phone to find your device.',
     RadioState.unauthorized =>
       'Allow Bluetooth access in your phone’s app settings.',
     RadioState.unavailable => 'Bluetooth is unavailable on this device.',
-    _ => 'Start monitoring on your Thor, then scan nearby.',
+    _ => 'Start monitoring on your device, then scan nearby.',
   };
 
   void _notify() {
@@ -1651,6 +1748,14 @@ class CompanionController extends ChangeNotifier {
       _wantsConnection = wanted ?? true;
       if (!_disposed && id != null) {
         remembered = NearbyThor(id, name ?? 'AYN Thor', 0);
+        devices = decodeDevices(await store.getString('thor_devices'));
+        _slotOwner = await store.getString('thor_slot_owner') ?? id;
+        // Upgrade from single-device storage.
+        if (!devices.any((d) => d.id == id)) {
+          devices = upsertDevice(devices, SavedDevice(id, remembered!.name));
+        }
+        _savedNetwork = await adaptive?.hasSavedNetwork(id) ?? false;
+        if (_disposed || intent != _intentEpoch) return;
         _scheduleReconnect(immediate: true);
         _notify();
       }
@@ -1661,11 +1766,21 @@ class CompanionController extends ChangeNotifier {
 
   Future<void> _remember(NearbyThor device) async {
     remembered = device;
+    final known = devices.where((d) => d.id == device.id).firstOrNull;
+    devices = upsertDevice(
+      devices,
+      (known ?? SavedDevice(device.id, device.name)).copyWith(
+        name: device.name,
+        product: hardware?.product ?? hardware?.displayModel,
+        screens: hardware?.screens,
+      ),
+    );
     if (!_rememberDevice) return;
     try {
       final store = SharedPreferencesAsync();
       await store.setString('thor_device_id', device.id);
       await store.setString('thor_device_name', device.name);
+      await store.setString('thor_devices', encodeDevices(devices));
     } catch (_) {
       /* The connection remains usable without persistence. */
     }
@@ -1812,7 +1927,7 @@ class CompanionController extends ChangeNotifier {
         !automaticReconnect ||
         !_wantsConnection ||
         _manualRecoveryRequired ||
-        radioState != RadioState.ready ||
+        (radioState != RadioState.ready && !_networkKnown) ||
         connected ||
         busy ||
         phase == CompanionPhase.scanning ||
@@ -1853,7 +1968,7 @@ class CompanionController extends ChangeNotifier {
           !automaticReconnect ||
           connected ||
           busy ||
-          radioState != RadioState.ready) {
+          (radioState != RadioState.ready && !_networkKnown)) {
         return;
       }
       final device = selected ?? remembered;
@@ -1897,7 +2012,10 @@ class CompanionController extends ChangeNotifier {
       return;
     }
     if (automaticReconnect && _wantsConnection) {
-      _linkLost(_session, 'Connection interrupted. Reconnecting to your Thor…');
+      _linkLost(
+        _session,
+        'Connection interrupted. Reconnecting to your device…',
+      );
     } else {
       await refresh();
     }
@@ -2016,6 +2134,8 @@ class CompanionController extends ChangeNotifier {
       return;
     }
     if (_disposed || session != _session) return;
+    await _takeSlot(device.id);
+    if (_disposed || session != _session) return;
     if (selected?.id != device.id) {
       if ((selected ?? remembered)?.id != device.id) {
         unawaited(_publishWidget(clear: true));
@@ -2039,7 +2159,12 @@ class CompanionController extends ChangeNotifier {
     initializing = false;
     _notify();
     try {
-      await _access();
+      try {
+        await _access();
+      } catch (_) {
+        // Bluetooth off or denied: a saved Wi-Fi/VPN path can still connect.
+        if (!_networkKnown) rethrow;
+      }
       if (_disposed || session != _session) return;
       _connectionSubscription = _transport!
           .connect(device.id, background: background)
@@ -2054,8 +2179,10 @@ class CompanionController extends ChangeNotifier {
               } else if (event == LinkState.disconnected) {
                 _linkLost(
                   session,
-                  'Connection ended. Check that monitoring is running on the Thor.',
+                  'Connection ended. Check that monitoring is running on the device.',
                 );
+                // Schedule the loss alert now; iOS may suspend the app before the next tick.
+                _checkConnectionAlerts();
               }
               _notify();
             },
@@ -2079,20 +2206,20 @@ class CompanionController extends ChangeNotifier {
                 session,
                 needsPairing
                     ? StaleServiceCache().message
-                    : 'Could not connect to the Thor. Check that monitoring is running and try again.',
+                    : 'Could not connect to the device. Check that monitoring is running and try again.',
               );
             },
             onDone: () {
               if (!_disposed && session == _session) {
                 _linkLost(
                   session,
-                  'Connection ended. Reconnecting to your Thor…',
+                  'Connection ended. Reconnecting to your device…',
                 );
               }
             },
           );
     } catch (e) {
-      _linkLost(session, _message(e, 'Could not connect to the Thor.'));
+      _linkLost(session, _message(e, 'Could not connect to the device.'));
     }
   }
 
@@ -2174,7 +2301,7 @@ class CompanionController extends ChangeNotifier {
         notificationsRequested = false;
         error = _message(
           e,
-          'Could not prepare the Thor connection. Tap Refresh to try again.',
+          'Could not prepare the device connection. Tap Refresh to try again.',
         );
       }
     } finally {
@@ -2266,8 +2393,9 @@ class CompanionController extends ChangeNotifier {
             final name = hardware?.deviceName;
             if (name != null) {
               selected = NearbyThor(deviceId, name, selected!.rssi);
-              await _remember(selected!);
             }
+            // Also records the product and screen count for the device list.
+            await _remember(selected!);
           }
         } catch (e) {
           if (session == _session) {
@@ -2298,16 +2426,16 @@ class CompanionController extends ChangeNotifier {
           _cancelRetry();
           error = switch (security) {
             BleSecurityFailure.notApproved =>
-              'Approve this phone on the Thor: Settings → Repair phone connection. Then tap Try again. You do not need to forget the Bluetooth pairing.',
+              'Approve this phone on the device: Settings → Repair phone connection. Then tap Try again. You do not need to forget the Bluetooth pairing.',
             // Older hosts also report an unapproved phone this way.
             BleSecurityFailure.notSecurelyPaired =>
-              'Approve this phone on the Thor: Settings → Repair phone connection, then tap Try again. If the phone is not listed there, remove the Thor from this phone’s Bluetooth settings and pair again, confirming the code on both screens.',
+              'Approve this phone on the device: Settings → Repair phone connection, then tap Try again. If the phone is not listed there, remove the device from this phone’s Bluetooth settings and pair again, confirming the code on both screens.',
             _ => StaleServiceCache().message,
           };
         } else {
           error = e is FormatException
               ? 'Received an incomplete device reading. Tap Refresh to retry.'
-              : 'Could not read the Thor. Keep it open, check pairing on both devices, then tap Refresh.';
+              : 'Could not read the device. Keep it open, check pairing on both devices, then tap Refresh.';
         }
       }
       return false;
@@ -2378,6 +2506,71 @@ class CompanionController extends ChangeNotifier {
     _notify();
   }
 
+  /// Moves the active credential slot to [id], stashing the previous owner's.
+  Future<void> _takeSlot(String id) async {
+    final owner = _slotOwner;
+    if (owner == id) return;
+    // No previous owner (first pairing, or after Forget): nothing to swap.
+    if (owner != null) {
+      try {
+        await fileBridge.invokeMethod('swapConnection', {
+          'stash': SavedDevice(owner, '').slot,
+          'restore': SavedDevice(id, '').slot,
+        });
+        await adaptive?.claimSaved(id);
+      } catch (e) {
+        logBle('Thor device switch: saved network unavailable: $e');
+      }
+    }
+    _slotOwner = id;
+    _savedNetwork = await adaptive?.hasSavedNetwork(id) ?? false;
+    if (_rememberDevice) {
+      try {
+        await SharedPreferencesAsync().setString('thor_slot_owner', id);
+      } catch (_) {}
+    }
+  }
+
+  /// Switches to another saved handheld (one is connected at a time).
+  Future<void> switchTo(SavedDevice device) =>
+      connect(NearbyThor(device.id, device.name, 0));
+
+  /// Leaves the current handheld saved and scans for a new one to pair.
+  Future<void> addDevice() async {
+    await disconnect();
+    selected = null;
+    stats = null;
+    hardware = null;
+    activity = null;
+    controls = null;
+    controlError = null;
+    receivedAt = null;
+    heartbeatAt = null;
+    heartbeat = null;
+    receivedCount = 0;
+    error = null;
+    _notify();
+    await startScan();
+  }
+
+  /// Removes a saved handheld; the active one goes through [forget].
+  Future<void> forgetDevice(SavedDevice device) async {
+    if (device.id == remembered?.id) return forget();
+    devices = devices.where((d) => d.id != device.id).toList();
+    try {
+      await fileBridge.invokeMethod('forgetSlot', {'slot': device.slot});
+    } catch (_) {}
+    if (_rememberDevice) {
+      try {
+        await SharedPreferencesAsync().setString(
+          'thor_devices',
+          encodeDevices(devices),
+        );
+      } catch (_) {}
+    }
+    _notify();
+  }
+
   Future<void> retryPhoneAuthorization() async {
     _manualRecoveryRequired = _hostAuthorizationRequired = false;
     final device = selected ?? remembered;
@@ -2403,6 +2596,9 @@ class CompanionController extends ChangeNotifier {
 
     await disconnect();
     await _publishWidget(clear: true);
+    final gone = remembered?.id;
+    devices = devices.where((d) => d.id != gone).toList();
+    if (_slotOwner == gone) _slotOwner = null;
     selected = null;
     remembered = null;
     stats = null;
@@ -2421,6 +2617,8 @@ class CompanionController extends ChangeNotifier {
         final store = SharedPreferencesAsync();
         await store.remove('thor_device_id');
         await store.remove('thor_device_name');
+        await store.remove('thor_slot_owner');
+        await store.setString('thor_devices', encodeDevices(devices));
       } catch (_) {}
     }
     _notify();

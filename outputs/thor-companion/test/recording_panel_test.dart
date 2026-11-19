@@ -17,7 +17,7 @@ class CaptureServer extends ThorFiles {
           port: 443,
           pin: 'a' * 64,
           token: 'b' * 64,
-          name: 'Thor',
+          name: 'Device',
         ),
         '192.0.2.1',
       );
@@ -70,7 +70,7 @@ class CaptureServer extends ThorFiles {
 
 void main() {
   testWidgets(
-    'Photos failure retains Thor clip; cleanup retry does not save twice',
+    'Photos failure retains device clip; cleanup retry does not save twice',
     (tester) async {
       SharedPreferencesAsyncPlatform.instance =
           InMemorySharedPreferencesAsync.empty();
@@ -129,7 +129,7 @@ void main() {
       await tester.pump();
       expect(saves, 2);
       expect(server.cleared, false);
-      expect(find.text('Remove Thor copy'), findsOneWidget);
+      expect(find.text('Remove device copy'), findsOneWidget);
       server.failClear = false;
       await tester.runAsync(() async {
         await state.stopAndSave();
@@ -137,7 +137,10 @@ void main() {
       await tester.pump();
       expect(saves, 2);
       expect(server.cleared, true);
-      expect(find.text('Saved to Photos · Thor copy removed'), findsOneWidget);
+      expect(
+        find.text('Saved to Photos · device copy removed'),
+        findsOneWidget,
+      );
       await tester.pumpWidget(const SizedBox());
       network.dispose();
       c.dispose();

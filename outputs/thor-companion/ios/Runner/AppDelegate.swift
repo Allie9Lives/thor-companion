@@ -19,6 +19,7 @@ private final class ThorAlertDelegate: NSObject, UNUserNotificationCenterDelegat
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private let refreshID = "com.alan.thorCompanion.refresh"
+  private var liveVideos: [Int: ThorLiveVideo] = [:]
   private var refreshChannel: FlutterMethodChannel?
   private var refreshBridgeReady = false
   private var refreshTask: BGAppRefreshTask?
@@ -73,6 +74,17 @@ private final class ThorAlertDelegate: NSObject, UNUserNotificationCenterDelegat
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    let liveRegistrar = engineBridge.pluginRegistry.registrar(forPlugin: "ThorLiveVideo")!
+    let liveChannel = FlutterMethodChannel(name: "com.alan.thorCompanion/live", binaryMessenger: liveRegistrar.messenger())
+    let liveTextures = liveRegistrar.textures()
+    liveChannel.setMethodCallHandler { [weak self] call, result in
+      guard let self, let args = call.arguments as? [String: Any], let id = args["id"] as? Int, (0...1).contains(id) else {
+        result(FlutterError(code: "live", message: "Choose top or bottom", details: nil)); return
+      }
+      let video = self.liveVideos[id] ?? ThorLiveVideo(textures: liveTextures, channel: liveChannel, id: id)
+      self.liveVideos[id] = video
+      video.handle(call.method, data: (args["data"] as? FlutterStandardTypedData)?.data, result: result)
+    }
     let wifiRegistrar = engineBridge.pluginRegistry.registrar(forPlugin: "ThorWifiBridge")!
     let wifi = FlutterMethodChannel(name:"com.alan.thorCompanion/wifi",binaryMessenger:wifiRegistrar.messenger())
     wifi.setMethodCallHandler { call,result in
@@ -113,6 +125,7 @@ private final class ThorAlertDelegate: NSObject, UNUserNotificationCenterDelegat
         guard let address = call.arguments as? String, let url = URL(string: address), url.scheme == "https", url.port == 47184, url.host != nil, url.user == nil, url.password == nil else {result(FlutterError(code:"open_link",message:"Invalid Web Ops address.",details:nil));return}
         UIApplication.shared.open(url,options:[:]) {opened in result(opened ? nil : FlutterError(code:"open_link",message:"Could not open Web Ops.",details:nil))}
       case "github": UIApplication.shared.open(URL(string: "https://github.com/Allie9Lives")!, options: [:]) { opened in if opened { result(nil) } else { result(FlutterError(code:"open_link",message:"Couldn’t open GitHub.",details:nil)) } }
+      case "releases": UIApplication.shared.open(URL(string: "https://github.com/Allie9Lives/thor-companion/releases/latest")!, options: [:]) { opened in if opened { result(nil) } else { result(FlutterError(code:"open_link",message:"Couldn’t open GitHub.",details:nil)) } }
       default: result(FlutterMethodNotImplemented)
       }
     }
@@ -128,6 +141,10 @@ private final class ThorAlertDelegate: NSObject, UNUserNotificationCenterDelegat
         }
         return
       }
+      if call.method == "cancel", let id = call.arguments as? String {
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["thor-battery-" + id])
+        result(nil); return
+      }
       guard call.method == "show", let args = call.arguments as? [String: String],
           let id = args["id"], ["low10", "low20", "charged80", "plugged", "unplugged", "closedLid", "wifiChanged", "wifiLost", "wifiSignIn", "bluetoothLost", "bluetoothBack", "test"].contains(id),
           let title = args["title"], let body = args["body"], title.count < 160, body.count < 500 else {
@@ -141,7 +158,7 @@ private final class ThorAlertDelegate: NSObject, UNUserNotificationCenterDelegat
         content.title = title; content.body = body
         content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: ["plugged", "charged80", "wifiChanged", "bluetoothBack", "test"].contains(id) ? "thor_positive.wav" : "thor_warning.wav"))
         let request = UNNotificationRequest(identifier: "thor-battery-" + id, content: content,
-          trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false))
+          trigger: UNTimeIntervalNotificationTrigger(timeInterval: min(max(Double(args["delay"] ?? "") ?? 1, 1), 600), repeats: false))
         UNUserNotificationCenter.current().add(request) { error in
           DispatchQueue.main.async {
             if let error = error { result(FlutterError(code: "battery_alert", message: error.localizedDescription, details: nil)) }
@@ -202,11 +219,11 @@ private final class ThorAlertDelegate: NSObject, UNUserNotificationCenterDelegat
                   throw NSError(domain: "ThorLiveBattery", code: 2, userInfo: [NSLocalizedDescriptionKey: "Allow Live Activities for Thor Companion in iPhone Settings."])
                 }
                 guard let value = BatteryStore.read() else {
-                  throw NSError(domain: "ThorLiveBattery", code: 3, userInfo: [NSLocalizedDescriptionKey: "Connect to the Thor and receive a battery reading first."])
+                  throw NSError(domain: "ThorLiveBattery", code: 3, userInfo: [NSLocalizedDescriptionKey: "Connect to the device and receive a battery reading first."])
                 }
                 let content = ActivityContent(state: value, staleDate: value.updatedAt.addingTimeInterval(90))
                 if Activity<ThorBatteryAttributes>.activities.isEmpty {
-                  _ = try Activity.request(attributes: ThorBatteryAttributes(name: "Thor"), content: content, pushType: nil)
+                  _ = try Activity.request(attributes: ThorBatteryAttributes(name: "Device"), content: content, pushType: nil)
                 } else {
                   for activity in Activity<ThorBatteryAttributes>.activities { await activity.update(content) }
                 }
@@ -304,6 +321,29 @@ extension AppDelegate: UIDocumentPickerDelegate {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         result(directory.path)
       case "forgetConnection": SecItemDelete(query as CFDictionary); result(nil)
+      case "swapConnection", "forgetSlot":
+        // Per-device credential slots: the active item belongs to the selected handheld.
+        guard let args = call.arguments as? [String: String] else { throw NSError(domain:"ThorFiles",code:1) }
+        let valid = { (s: String?) -> Bool in s.map { $0.range(of: "^[A-Za-z0-9]{1,64}$", options: .regularExpression) != nil } ?? false }
+        func slot(_ name: String) -> [String: Any] { var q = query; q[kSecAttrAccount as String] = fileAccount + "-" + name; return q }
+        func read(_ q: [String: Any]) -> Data? {
+          var request = q; request[kSecReturnData as String] = true; request[kSecMatchLimit as String] = kSecMatchLimitOne
+          var found: CFTypeRef?; return SecItemCopyMatching(request as CFDictionary, &found) == errSecSuccess ? found as? Data : nil
+        }
+        func write(_ q: [String: Any], _ data: Data?) throws {
+          SecItemDelete(q as CFDictionary)
+          guard let data = data else { return }
+          var item = q; item[kSecValueData as String] = data; item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+          guard SecItemAdd(item as CFDictionary, nil) == errSecSuccess else { throw NSError(domain:"ThorFiles",code:2) }
+        }
+        if call.method == "forgetSlot" {
+          guard valid(args["slot"]) else { throw NSError(domain:"ThorFiles",code:1) }
+          SecItemDelete(slot(args["slot"]!) as CFDictionary); result(nil); return
+        }
+        guard valid(args["restore"]), args["stash"] == nil || valid(args["stash"]) else { throw NSError(domain:"ThorFiles",code:1) }
+        if let stash = args["stash"] { try write(slot(stash), read(query)) }
+        try write(query, read(slot(args["restore"]!)))
+        result(nil)
       case "saveConnection":
         guard let args = call.arguments as? [String: Any] else { throw NSError(domain:"ThorFiles",code:1) }
         let data = try JSONSerialization.data(withJSONObject: args)
@@ -389,7 +429,7 @@ extension AppDelegate {
       DispatchQueue.global(qos: .userInitiated).async {
         ThorVideoComposer.compose(sources, offsets: offsets.map { $0.doubleValue }, fps: fps, directory: self.transferDirectory) { exported in
           switch exported {
-          case .failure(let error): DispatchQueue.main.async { result(FlutterError(code: "recording_export", message: "Could not combine screens. The Thor copy is kept; try Save to Photos again.", details: Self.recordingError(error))) }
+          case .failure(let error): DispatchQueue.main.async { result(FlutterError(code: "recording_export", message: "Could not combine screens. The device copy is kept; try Save to Photos again.", details: Self.recordingError(error))) }
           case .success(let output):
             PHPhotoLibrary.shared().performChanges({
               let asset = PHAssetCreationRequest.forAsset()
@@ -400,7 +440,7 @@ extension AppDelegate {
               if !sources.contains(output) { try? FileManager.default.removeItem(at: output) }
               DispatchQueue.main.async {
                 if success { result(nil) }
-                else { result(FlutterError(code: "recording_save", message: "Could not add the recording to Photos. The Thor copy is kept; try Save to Photos again.", details: error.map { Self.recordingError($0) })) }
+                else { result(FlutterError(code: "recording_save", message: "Could not add the recording to Photos. The device copy is kept; try Save to Photos again.", details: error.map { Self.recordingError($0) })) }
               }
             }
           }
@@ -413,8 +453,8 @@ extension AppDelegate {
 
 @available(iOS 16.0, *)
 struct FollowThorWifiIntent: AppIntent {
-  static var title: LocalizedStringResource = "Follow Wi-Fi on Thor"
-  static var description = IntentDescription("Ask your Thor to join a saved network when Follow phone Wi-Fi is enabled.")
+  static var title: LocalizedStringResource = "Follow Wi-Fi on the device"
+  static var description = IntentDescription("Ask your device to join a saved network when Follow phone Wi-Fi is enabled.")
   static var openAppWhenRun: Bool = true
   @Parameter(title: "Network name") var networkName: String
   func perform() async throws -> some IntentResult {

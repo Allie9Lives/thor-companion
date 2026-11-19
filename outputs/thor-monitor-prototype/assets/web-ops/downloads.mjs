@@ -10,7 +10,7 @@ export async function downloadFile({url,statUrl,name,request,onProgress,signal})
         if(!Number.isSafeInteger(stat.size)||stat.size<0)throw new Error('File size is unavailable');
         if(!handle&&stat.size>256*1024*1024) {
             const link=document.createElement('a');link.href=url;link.download=name;document.body.append(link);link.click();link.remove();
-            onProgress('Download handed to your browser. If it fails, trust the Thor certificate and retry.');return;
+            onProgress('Download handed to your browser. If it fails, trust the device certificate and retry.');return;
         }
         signal?.throwIfAborted();if(handle)writable=await handle.createWritable();
         const pieces=[];const chunkSize=4*1024*1024;

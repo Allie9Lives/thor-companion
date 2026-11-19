@@ -25,7 +25,7 @@ final class LocatorStopPanel {
    Context c=app.createWindowContext(display,WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,null);WindowManager wm=c.getSystemService(WindowManager.class);
    LinearLayout panel=createPanel(c,HostTheme.current(c));int width=Math.min(dp(c,352),c.getResources().getDisplayMetrics().widthPixels-dp(c,40));
    int flags=WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL|WindowManager.LayoutParams.FLAG_DIM_BEHIND|WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
-   WindowManager.LayoutParams params=new WindowManager.LayoutParams(width,WindowManager.LayoutParams.WRAP_CONTENT,WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,flags,android.graphics.PixelFormat.TRANSLUCENT);params.gravity=Gravity.CENTER;params.setTitle("Thor locator Stop");
+   WindowManager.LayoutParams params=new WindowManager.LayoutParams(width,WindowManager.LayoutParams.WRAP_CONTENT,WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,flags,android.graphics.PixelFormat.TRANSLUCENT);params.gravity=Gravity.CENTER;params.setTitle("Device locator Stop");
    Overlay entry=new Overlay(wm,panel,params);boolean animate=ValueAnimator.areAnimatorsEnabled();entry.reveal=animate?0:1;entry.blurEnabled=wm.isCrossWindowBlurEnabled();configure(entry);
    if(animate){panel.setAlpha(0);panel.setScaleX(.94f);panel.setScaleY(.94f);panel.setTranslationY(dp(c,8));}
    wm.addView(panel,params);overlays.add(entry);
@@ -42,9 +42,9 @@ final class LocatorStopPanel {
   LinearLayout panel=new LinearLayout(c);panel.setOrientation(LinearLayout.VERTICAL);panel.setPadding(dp(c,22),dp(c,20),dp(c,22),dp(c,20));
    GradientDrawable background=new GradientDrawable();background.setColor(theme.card);background.setCornerRadius(dp(c,22));background.setStroke(dp(c,1),theme.border);panel.setBackground(background);panel.setElevation(dp(c,18));
    if(theme.rainbow){panel.addView(HostTheme.stripe(c));Space gap=new Space(c);panel.addView(gap,new LinearLayout.LayoutParams(1,dp(c,16)));}
-   TextView title=new TextView(c);title.setText("Find my Thor");title.setTextColor(theme.ink);title.setTextSize(22);title.setTypeface(Typeface.create("sans-serif-medium",0));panel.addView(title);
+   TextView title=new TextView(c);title.setText(ThorModel.findLabel());title.setTextColor(theme.ink);title.setTextSize(22);title.setTypeface(Typeface.create("sans-serif-medium",0));panel.addView(title);
    TextView body=new TextView(c);body.setText("Tap below to stop the locator sound.");body.setTextColor(theme.muted);body.setTextSize(16);body.setPadding(0,dp(c,8),0,dp(c,16));panel.addView(body);
-   Button stop=new Button(c);stop.setText("Stop sound");stop.setAllCaps(false);stop.setTextSize(18);stop.setTextColor(theme.onAccent);stop.setMinHeight(dp(c,54));stop.setContentDescription("Stop Find my Thor sound");GradientDrawable button=new GradientDrawable();button.setColor(theme.accent);button.setCornerRadius(dp(c,12));stop.setBackground(button);stop.setOnClickListener(v->FindThor.requestStop());panel.addView(stop,new LinearLayout.LayoutParams(-1,dp(c,56)));
+   Button stop=new Button(c);stop.setText("Stop sound");stop.setAllCaps(false);stop.setTextSize(18);stop.setTextColor(theme.onAccent);stop.setMinHeight(dp(c,54));stop.setContentDescription("Stop "+ThorModel.findLabel()+" sound");GradientDrawable button=new GradientDrawable();button.setColor(theme.accent);button.setCornerRadius(dp(c,12));stop.setBackground(button);stop.setOnClickListener(v->FindThor.requestStop());panel.addView(stop,new LinearLayout.LayoutParams(-1,dp(c,56)));
    return panel;
  }
 

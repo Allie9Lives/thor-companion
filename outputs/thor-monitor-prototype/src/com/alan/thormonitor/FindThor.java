@@ -46,7 +46,7 @@ final class FindThor {
         FutureTask<Void> action=new FutureTask<>(()->{if(enabled)startNow(context.getApplicationContext());else requestStop();return null;});
         if(Looper.myLooper()==Looper.getMainLooper())action.run();else main.post(action);
         try{action.get(3,TimeUnit.SECONDS);}catch(ExecutionException e){throw new IllegalStateException(e.getCause().getMessage());}
-        catch(TimeoutException e){action.cancel(false);throw new IllegalStateException("Find Thor did not respond");}
+        catch(TimeoutException e){action.cancel(false);throw new IllegalStateException("Find device did not respond");}
     }
     static void recoverVolume(Context context) {
         if(ringing||fadingOut)return;
@@ -67,7 +67,7 @@ final class FindThor {
         AudioAttributes attributes=new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build();
         focus=new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT).setAudioAttributes(attributes)
             .setOnAudioFocusChangeListener(change->{if(change==AudioManager.AUDIOFOCUS_LOSS || change==AudioManager.AUDIOFOCUS_LOSS_TRANSIENT)stopNow();},main).build();
-        if(audio.requestAudioFocus(focus)!=AudioManager.AUDIOFOCUS_REQUEST_GRANTED){audio=null;focus=null;throw new IllegalStateException("Audio is busy. Try Find Thor again");}
+        if(audio.requestAudioFocus(focus)!=AudioManager.AUDIOFOCUS_REQUEST_GRANTED){audio=null;focus=null;throw new IllegalStateException("Audio is busy. Try Find device again");}
         oldMediaVolume=audio.getStreamVolume(AudioManager.STREAM_MUSIC);
         oldVolume=audio.getStreamVolume(AudioManager.STREAM_ALARM);oldMute=audio.isStreamMute(AudioManager.STREAM_ALARM);
         maximum=audio.getStreamMaxVolume(AudioManager.STREAM_ALARM);
@@ -104,12 +104,12 @@ final class FindThor {
             }
             MonitorService.locatorChanged();track.play();main.post(tick);
             NotificationManager nm=context.getSystemService(NotificationManager.class);
-            NotificationChannel channel=new NotificationChannel("find_thor","Find Thor",NotificationManager.IMPORTANCE_HIGH);
+            NotificationChannel channel=new NotificationChannel("find_thor","Find device",NotificationManager.IMPORTANCE_HIGH);
             channel.setSound(null,null);channel.enableVibration(false);nm.createNotificationChannel(channel);
             Intent stop=new Intent(context,MonitorService.class).setAction("STOP_FIND");
             PendingIntent pending=PendingIntent.getService(context,22,stop,PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);
             Notification note=new Notification.Builder(context,"find_thor").setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-                .setContentTitle("Finding your Thor").setContentText("Tap to stop the locator sound").setContentIntent(pending).setDeleteIntent(pending)
+                .setContentTitle("Finding your device").setContentText("Tap to stop the locator sound").setContentIntent(pending).setDeleteIntent(pending)
                 .setAutoCancel(true).setTimeoutAfter(60000).addAction(new Notification.Action.Builder(null,"Stop sound",pending).build()).build();
             LocatorStopPanel.show(context);
             try{nm.notify(22,note);}catch(SecurityException ignored){} // Phone Stop and automatic timeout remain available.

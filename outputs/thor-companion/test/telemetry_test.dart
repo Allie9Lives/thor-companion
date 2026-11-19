@@ -11,7 +11,7 @@ void main() {
       final h = DeviceHardware.fromBytes(
         bytes({
           'model': 'AYN_Thor',
-          'device_name': 'My custom Thor',
+          'device_name': 'My custom device',
           'variant': 'Max',
           'soc_model': 'QCS8550',
           'storage_capacity_bytes': 1000000000000,
@@ -19,7 +19,7 @@ void main() {
         }),
       );
       expect(h.displayModel, 'AYN Thor Max');
-      expect(h.deviceName, 'My custom Thor');
+      expect(h.deviceName, 'My custom device');
       expect(h.socModel, 'QCS8550');
       expect(h.storageConfiguration, '1 TB');
       expect(h.dataBytes, 1011194642432);
@@ -109,7 +109,7 @@ void main() {
     expect(readOnly.sdState, SdCardState.readOnly);
     expect(readOnly.sdUsedFraction, 0);
   });
-  test('reads the Thor protocol and preserves raw current sign', () {
+  test('reads the device protocol and preserves raw current sign', () {
     final s = DeviceStats.fromBytes(
       bytes({
         'seq': 24,

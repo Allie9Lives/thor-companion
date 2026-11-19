@@ -108,6 +108,35 @@ class FakeControlBle extends FakeBle implements ControlTransport {
   }
 }
 
+/// Acknowledges every control write the way Thor Monitor does.
+class FakeInputBle extends FakeBle implements ControlTransport {
+  final writes = <Map<String, dynamic>>[];
+  String error = '';
+  @override
+  bool supportsControls(String deviceId) => true;
+  @override
+  Future<void> writeControl(String deviceId, List<int> bytes) async {
+    expect(bytes.length, lessThanOrEqualTo(180));
+    writes.add(jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>);
+  }
+
+  @override
+  Future<List<int>> read(String deviceId, String characteristicId) {
+    if (characteristicId != controlId) {
+      return super.read(deviceId, characteristicId);
+    }
+    return Future.value(
+      utf8.encode(
+        jsonEncode({
+          'v': 1,
+          'ack': writes.isEmpty ? '' : writes.last['id'],
+          'error': error,
+        }),
+      ),
+    );
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late FakeBle ble;
@@ -125,7 +154,7 @@ void main() {
       Future<void>.delayed(const Duration(milliseconds: 20));
   Future<void> establish() async {
     await settle();
-    await c.connect(const NearbyThor('thor', 'Thor', -50));
+    await c.connect(const NearbyThor('thor', 'Device', -50));
     ble.links.add(LinkState.connected);
     await settle();
   }
@@ -148,8 +177,8 @@ void main() {
     },
   );
   test('repeated Connect is ignored while a connection is pending', () async {
-    final first = c.connect(const NearbyThor('thor', 'Thor', -50));
-    final second = c.connect(const NearbyThor('thor', 'Thor', -50));
+    final first = c.connect(const NearbyThor('thor', 'Device', -50));
+    final second = c.connect(const NearbyThor('thor', 'Device', -50));
     await Future.wait([first, second]);
     expect(ble.connections, 1);
     expect(c.phase, CompanionPhase.connecting);
@@ -161,7 +190,7 @@ void main() {
       ble.malformed = true;
       await establish();
       ble.malformed = false;
-      await c.connect(const NearbyThor('thor', 'Thor', -50));
+      await c.connect(const NearbyThor('thor', 'Device', -50));
       expect(ble.connections, 1);
       expect(ble.discoveries, 2);
       expect(c.stats?.battery, 69);
@@ -265,7 +294,7 @@ void main() {
       final before = c.stats;
       await c.disconnect();
       ble.blocked = Completer<List<int>>();
-      await c.connect(const NearbyThor('thor', 'Thor', -50));
+      await c.connect(const NearbyThor('thor', 'Device', -50));
       ble.links.add(LinkState.connected);
       await settle();
       expect(c.connected, isTrue);
@@ -456,7 +485,7 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 150));
       expect(ble.connections, 1);
       expect(c.pairingRecoveryRequired, isTrue);
-      expect(c.error, contains('Re-pair the Thor'));
+      expect(c.error, contains('Re-pair the device'));
     },
   );
   test(
@@ -545,7 +574,7 @@ void main() {
     expect(c.selected, isNull);
     expect(c.phase, CompanionPhase.scanning);
     ble.discoveryFailure = null;
-    await c.connect(const NearbyThor('new-id', 'Thor', -50));
+    await c.connect(const NearbyThor('new-id', 'Device', -50));
     ble.links.add(LinkState.connected);
     await until(() => c.notificationsRequested);
     expect(c.stats?.battery, 69);
@@ -578,7 +607,7 @@ void main() {
           snapshots.add(snapshot);
         },
       );
-      c.remembered = const NearbyThor('thor', 'Thor', 0);
+      c.remembered = const NearbyThor('thor', 'Device', 0);
       await establish();
       expect(snapshots, isNotEmpty);
       expect(snapshots.contains(null), isFalse);
@@ -621,6 +650,40 @@ void main() {
       // Recovered on the same link, not by the watchdog forcing a reconnect.
       expect(controlBle.connections, 2);
       expect(c.phase, CompanionPhase.connected);
+    },
+  );
+  test(
+    'remote input sends one bounded command and reports old hosts',
+    () async {
+      c.dispose();
+      await ble.close();
+      final input = FakeInputBle();
+      ble = input;
+      c = CompanionController(transport: input, rememberDevice: false);
+      await establish();
+      input.writes.clear();
+      expect(
+        await c.sendRemoteInput(
+          'bottom',
+          1,
+          x: 0,
+          y: 10000,
+          x2: 10000,
+          y2: 0,
+          ms: 3000,
+        ),
+        isNull,
+      );
+      expect(input.writes.single, containsPair('set', 'input'));
+      expect(input.writes.single, containsPair('target', 'bottom'));
+      expect(input.writes.single, containsPair('ms', 3000));
+      expect(await c.sendRemoteInput('top', 2), isNull);
+      expect(input.writes.last.containsKey('x'), isFalse);
+      input.error = 'Control failed: Unsupported control';
+      expect(
+        await c.sendRemoteInput('top', 0, x: 1, y: 1),
+        'Update Thor Monitor to use remote touch.',
+      );
     },
   );
 }

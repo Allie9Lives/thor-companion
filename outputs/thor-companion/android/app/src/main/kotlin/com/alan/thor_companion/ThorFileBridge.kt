@@ -30,6 +30,16 @@ class ThorFileBridge(private val activity: Activity) {
    "cacheDirectory" -> result.success(directory.path)
    "iconCacheDirectory" -> { val icons=File(activity.cacheDir,"thor-app-icons");icons.mkdirs();result.success(icons.path) }
    "forgetConnection" -> {credential.delete();result.success(null)}
+   "swapConnection", "forgetSlot" -> {
+    // Per-device credential slots: the active file belongs to the selected handheld.
+    fun slot(name: String?): File { require(name!=null&&Regex("[A-Za-z0-9]{1,64}").matches(name));return File(activity.filesDir,"thor-file-connection-$name.bin") }
+    val args=call.arguments as Map<*,*>
+    if(call.method=="forgetSlot"){slot(args["slot"] as String?).delete();result.success(null);return}
+    val restore=slot(args["restore"] as String?)
+    (args["stash"] as String?)?.let{val stash=slot(it);stash.delete();if(credential.exists())check(credential.renameTo(stash))}
+    credential.delete();if(restore.exists())check(restore.renameTo(credential))
+    result.success(null)
+   }
    "saveConnection" -> {
     val data=JSONObject(call.arguments as Map<*,*>).toString().toByteArray(Charsets.UTF_8)
     require(data.size<=8192)
@@ -41,7 +51,7 @@ class ThorFileBridge(private val activity: Activity) {
     val data=credential.readBytes();require(data.size in 29..16384)
     val cipher=Cipher.getInstance("AES/GCM/NoPadding").apply{init(Cipher.DECRYPT_MODE,key(),GCMParameterSpec(128,data.copyOfRange(0,12)))}
     val json=JSONObject(String(cipher.doFinal(data.copyOfRange(12,data.size)),Charsets.UTF_8))
-    val hosts=json.getJSONArray("hosts");result.success(mapOf("hosts" to (0 until hosts.length()).map{hosts.getString(it)},"port" to json.getInt("port"),"pin" to json.getString("pin"),"token" to json.getString("token"),"name" to json.getString("name"),"preferredHost" to json.optString("preferredHost", "")))
+    val hosts=json.getJSONArray("hosts");result.success(mapOf("hosts" to (0 until hosts.length()).map{hosts.getString(it)},"port" to json.getInt("port"),"pin" to json.getString("pin"),"token" to json.getString("token"),"name" to json.getString("name"),"preferredHost" to json.optString("preferredHost", ""),"manualHost" to json.optString("manualHost", "")))
    }
    "pickFile","saveFile" -> {
     check(pending==null){"A file picker is already open"}

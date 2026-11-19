@@ -100,7 +100,7 @@ class NetworkLink extends ChangeNotifier {
     } catch (e) {
       error = e is StateError
           ? e.message
-          : 'Could not reach the Thor over Wi-Fi or VPN.';
+          : 'Could not reach the device over Wi-Fi or VPN.';
     } finally {
       busy = false;
       changed();
@@ -185,7 +185,7 @@ class _NetworkConnectionCardState extends State<NetworkConnectionCard> {
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
-          Text(n.connection?.name ?? 'Link this phone to your Thor'),
+          Text(n.connection?.name ?? 'Link this phone to your device'),
           const SizedBox(height: 8),
           const Text('Automatically uses a reachable VPN or local address.'),
           const SizedBox(height: 12),

@@ -140,7 +140,7 @@ class _WebOpsPageState extends State<WebOpsPage> {
                 ),
                 const SizedBox(height: 10),
                 const Text(
-                  'Use your Thor from a browser over Wi-Fi or a private VPN.',
+                  'Use your device from a browser over Wi-Fi or a private VPN.',
                 ),
                 const SizedBox(height: 16),
                 if (status != null && !configured)
@@ -229,7 +229,7 @@ class _WebOpsPageState extends State<WebOpsPage> {
             const Padding(
               padding: EdgeInsets.only(top: 16),
               child: Text(
-                'Trust the Thor’s certificate in your browser. Export it from Thor Monitor → Web Ops.',
+                'Trust the device’s certificate in your browser. Export it from Thor Monitor → Web Ops.',
               ),
             ),
           const SizedBox(height: 16),

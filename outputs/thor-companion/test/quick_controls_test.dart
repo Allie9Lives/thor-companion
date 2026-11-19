@@ -161,7 +161,16 @@ Future<void> main() async {
                     appearance: appearance,
                   ).extension<AppPalette>()!.card,
                   child: QuickControls(
-                    values: const {'vibration': 1, 'led': 1},
+                    values: const {
+                      'vibration': 1,
+                      'led': 1,
+                      'hz': -1,
+                      'performance': -1,
+                      'fan': -1,
+                      'focus': -1,
+                      'bypass': -1,
+                      'style': -1,
+                    },
                     enabled: false,
                     onSet: (_, _) => fail('disabled'),
                   ),
@@ -257,4 +266,23 @@ Future<void> main() async {
       expect(tester.takeException(), isNull);
     },
   );
+  testWidgets('controls the handheld lacks are hidden', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: QuickControls(
+            values: const {'vibration': 1, 'screens': 1},
+            enabled: true,
+            onSet: (_, _) {},
+          ),
+        ),
+      ),
+    );
+    expect(
+      tester
+          .widgetList<ControlSymbol>(find.byType(ControlSymbol))
+          .map((s) => s.name),
+      ['vibration', 'clean'],
+    );
+  });
 }

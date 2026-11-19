@@ -196,7 +196,7 @@ class _ConnectionHealthPageState extends State<ConnectionHealthPage> {
                 ),
               ),
               icon: const Icon(Icons.wifi),
-              label: const Text('Thor Wi-Fi'),
+              label: const Text('Device Wi-Fi'),
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
@@ -288,7 +288,7 @@ class _ConnectionHealthPageState extends State<ConnectionHealthPage> {
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Automatic connection'),
                   subtitle: const Text(
-                    'Uses live Bluetooth signal and response times. Verifies Wi-Fi or your existing VPN before switching, and keeps Bluetooth connected as a fallback. Files and screenshots still require a network connection.',
+                    'Uses Wi-Fi or your existing VPN whenever the device answers on it, and keeps Bluetooth connected as a fallback. Bluetooth is still used for pairing, changing the device’s Wi-Fi and background alerts.',
                   ),
                   value: c.adaptive!.automatic,
                   onChanged: (value) => c.adaptive!.setAutomatic(value),
@@ -308,7 +308,7 @@ class _ConnectionHealthPageState extends State<ConnectionHealthPage> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'Bluetooth: allow access on this phone and start monitoring on the Thor. Complete pairing prompts on both devices.\n\nNetwork: keep monitoring and network access enabled on the Thor. Use a reachable Wi-Fi or existing VPN address.\n\nAdvanced controls: open Recovery setup on the Thor and check its permission and local pairing.\n\nFrontmost locator Stop: allow display over other apps in Thor Monitor.\n\nLast scan signal is a saved scan measurement, not a live signal reading.',
+                    'Bluetooth: allow access on this phone and start monitoring on the device. Complete pairing prompts on both devices.\n\nNetwork: keep monitoring and network access enabled on the device. Use a reachable Wi-Fi or existing VPN address.\n\nAdvanced controls: open Recovery setup on the device and check its permission and local pairing.\n\nFrontmost locator Stop: allow display over other apps in Thor Monitor.\n\nLast scan signal is a saved scan measurement, not a live signal reading.',
                   ),
                   TextButton(
                     onPressed: () => openAppSettings(),

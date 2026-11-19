@@ -74,7 +74,7 @@ public class MonitorService extends Service {
         testWakeLock = getSystemService(PowerManager.class).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "com.alan.thormonitor:ClosedLidTest");
         testWakeLock.setReferenceCounted(false);
         NotificationManager nm = getSystemService(NotificationManager.class);
-        nm.createNotificationChannel(new NotificationChannel("monitor", "Thor monitoring", NotificationManager.IMPORTANCE_LOW));
+        nm.createNotificationChannel(new NotificationChannel("monitor", "Device monitoring", NotificationManager.IMPORTANCE_LOW));
         startForeground(1, notification("Starting Bluetooth monitoring"));
         running = true;
         registerReceiver(screenReceiver, new IntentFilter(Intent.ACTION_SCREEN_OFF));
@@ -158,20 +158,20 @@ public class MonitorService extends Service {
     }
 
     static byte[] networkRead(String kind) throws Exception {
-        MonitorService s=instance;if(s==null||s.closing||!running)throw new IllegalStateException("Start monitoring on the Thor");
+        MonitorService s=instance;if(s==null||s.closing||!running)throw new IllegalStateException("Start monitoring on the device");
         if(kind.equals("control"))return s.controls.snapshot().toString().getBytes(StandardCharsets.UTF_8);
         UUID id=kind.equals("stats")?STATS:kind.equals("hardware")?HARDWARE:kind.equals("live")?LIVE:null;
         if(id==null)throw new IllegalArgumentException("Unknown reading");
         return s.value(id,s.capture("network_read"));
     }
     static JSONObject webState()throws Exception {
-        MonitorService s=instance;if(s==null||s.closing||!running)throw new IllegalStateException("Start monitoring on the Thor");
+        MonitorService s=instance;if(s==null||s.closing||!running)throw new IllegalStateException("Start monitoring on the device");
         synchronized(s){JSONObject sample=s.latest;if(sample==null||System.currentTimeMillis()-s.lastSample>4000)sample=s.capture("web");
             JSONObject stats=new JSONObject(new String(s.value(STATS,sample),StandardCharsets.UTF_8));stats.put("web_active",WebOps.awake(s)).put("wake_lock_held",s.testWakeLock!=null&&s.testWakeLock.isHeld());stats.put("monitoring_paused",paused(s));stats.put("runtime",BatteryAnalysis.runtime(BatteryHistory.get(s).localSamples(System.currentTimeMillis()-7200000),HostStatsUi.sample(sample)).label);return new JSONObject().put("appearance",HostTheme.name(s)).put("stats",stats).put("hardware",new JSONObject(new String(s.value(HARDWARE,sample),StandardCharsets.UTF_8))).put("activity",s.activity==null?new JSONObject():s.activity.webReply());
         }
     }
     static byte[] networkControl(byte[] bytes)throws Exception {
-        MonitorService s=instance;if(s==null||s.closing||!running)throw new IllegalStateException("Start monitoring on the Thor");
+        MonitorService s=instance;if(s==null||s.closing||!running)throw new IllegalStateException("Start monitoring on the device");
         return s.controls.exchange(bytes).toString().getBytes(StandardCharsets.UTF_8);
     }
 
@@ -197,11 +197,13 @@ public class MonitorService extends Service {
             .setContentIntent(open).addAction(new Notification.Action.Builder(null, "Stop", stop).build()).build();
     }
 
+    /** Long Bluetooth names (e.g. "Name's Retroid Pocket Classic") overflow the 31-byte scan response. */
+    private boolean advertiseName=true;
     private void advertise() {
         AdvertiseSettings settings = new AdvertiseSettings.Builder().setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_POWER)
             .setConnectable(true).setTimeout(0).setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM).build();
         AdvertiseData data = new AdvertiseData.Builder().addServiceUuid(new ParcelUuid(SERVICE)).build();
-        AdvertiseData response = new AdvertiseData.Builder().setIncludeDeviceName(true).build();
+        AdvertiseData response = new AdvertiseData.Builder().setIncludeDeviceName(advertiseName).build();
         currentAdvertisingCallback=newAdvertisingCallback(gattEpoch);
         advertiser.startAdvertising(settings, data, response, currentAdvertisingCallback);
     }
@@ -209,11 +211,12 @@ public class MonitorService extends Service {
     private AdvertiseCallback newAdvertisingCallback(final int epoch) { return new AdvertiseCallback() {
         @Override public void onStartSuccess(AdvertiseSettings s) {
             if (closing || epoch!=gattEpoch) return;
-            state = "Bluetooth ready · scan for Thor"; event("advertising_started", "success");
+            state = "Bluetooth ready · scan for this device"; event("advertising_started", "success");
             getSystemService(NotificationManager.class).notify(1, notification(activeUntil > 0 ? "10-minute test · CPU awake, screens may sleep" : continuous ? "Monitoring · stays active with the lid closed" : "Bluetooth ready · waiting for your phone"));
         }
         @Override public void onStartFailure(int code) {
             if(closing || epoch!=gattEpoch)return;
+            if(code==ADVERTISE_FAILED_DATA_TOO_LARGE&&advertiseName){advertiseName=false;event("advertising_name_omitted","name too long");advertise();return;}
             state = "Bluetooth advertising failed (" + code + ")"; event("advertising_failed", "code=" + code); closeBluetooth();
         }
     }; }
@@ -276,12 +279,15 @@ public class MonitorService extends Service {
                     {"input_w","input_watts"}};
                 for (String[] key : keys) result.put(key[0], j.opt(key[1]));
             } else if (id.equals(HARDWARE)) {
-                for (String key : new String[]{"model","device_name","variant","soc_model","storage_capacity_bytes","manufacturer","android","build","cpu_name","gpu_name","ram_total_bytes","data_total_bytes","storage_model","ufs_descriptor","ufs_version"})
+                for (String key : new String[]{"model","product","family","screens","device_name","variant","soc_model","storage_capacity_bytes","manufacturer","android","build","cpu_name","gpu_name","ram_total_bytes","data_total_bytes","storage_model","ufs_descriptor","ufs_version","storage_standard"})
                     result.put(key, j.opt(key));
+                result.put("host_version", HostUpdates.installed(this));
             }
         } catch (Exception ignored) {}
         // Keep optional health metadata from overflowing a Bluetooth attribute.
         if(id.equals(STATS))for(String key:new String[]{"design_uah","full_uah","cycles","health"})if(result.toString().getBytes(StandardCharsets.UTF_8).length>512)result.remove(key);
+        // Least useful first; product and screens drive the phone's layout.
+        if(id.equals(HARDWARE))for(String key:new String[]{"ufs_descriptor","build","storage_model","host_version"})if(result.toString().getBytes(StandardCharsets.UTF_8).length>512)result.remove(key);
         return result.toString().getBytes(StandardCharsets.UTF_8);
     }
 
@@ -383,7 +389,7 @@ public class MonitorService extends Service {
                 subscriptions.removeIf(k -> k.startsWith(device.getAddress()));
                 readSnapshots.keySet().removeIf(k -> k.startsWith(device.getAddress()));
             }
-            connections = devices.size(); state = connections > 0 ? "Phone connected · encrypted reads require pairing" : "Bluetooth ready · scan for Thor";
+            connections = devices.size(); state = connections > 0 ? "Phone connected · encrypted reads require pairing" : "Bluetooth ready · scan for device";
             event("connection", "state=" + newState + ", status=" + status);
         }
         @Override public void onMtuChanged(BluetoothDevice device, int mtu) {

@@ -85,7 +85,7 @@ final class Recovery {
         if(port<1 || port>65535 || !code.matches("[0-9]{6}")) {state="Enter the pairing port and six-digit code";return;}
         if(!busy.compareAndSet(false,true)) return;
         worker.execute(()->{
-            state="Pairing with this Thor…";
+            state="Pairing with this device…";
             boolean success=false;
             try(LocalAdb adb=new LocalAdb(c)) {
                 if(!adb.pair("127.0.0.1",port,code)) throw new IllegalStateException("Pairing rejected");

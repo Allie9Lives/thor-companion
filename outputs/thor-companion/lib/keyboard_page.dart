@@ -47,7 +47,7 @@ class _RemoteKeyboardPageState extends State<RemoteKeyboardPage> {
             children: [
               if (!supported || !selected) ...[
                 notice(
-                  'Set up on your Thor',
+                  'Set up on your device',
                   supported
                       ? 'Open Thor Monitor → Phone keyboard. Enable Thor Remote Keyboard, then select it.'
                       : 'Update Thor Monitor, then enable Thor Remote Keyboard under Phone keyboard.',
@@ -62,7 +62,7 @@ class _RemoteKeyboardPageState extends State<RemoteKeyboardPage> {
                 const SizedBox(height: 16),
               ],
               const Text(
-                'Tap a text field on your Thor. Type here, then send.',
+                'Tap a text field on your device. Type here, then send.',
                 style: TextStyle(fontSize: 16),
               ),
               const SizedBox(height: 16),
@@ -116,7 +116,7 @@ class _RemoteKeyboardPageState extends State<RemoteKeyboardPage> {
               ),
               const SizedBox(height: 20),
               const Text(
-                'Input goes to the focused field on either Thor screen. Enter follows that app’s keyboard action.',
+                'Input goes to the focused field on either device screen. Enter follows that app’s keyboard action.',
                 style: TextStyle(fontSize: 14),
               ),
             ],

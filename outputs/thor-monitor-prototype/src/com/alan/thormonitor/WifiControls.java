@@ -26,7 +26,7 @@ final class WifiControls {
  static JSONObject join(JSONObject j)throws Exception{
   String ssid=j.getString("s"),security=j.getString("t"),password=j.optString("p","");byte[] name=ssid.getBytes(StandardCharsets.UTF_8);
   if(name.length<1||name.length>32||ssid.indexOf('\0')>=0)throw new IllegalArgumentException("Network name must be 1–32 bytes");
-  if(!Arrays.asList("open","owe","wpa2","wpa3").contains(security))throw new IllegalArgumentException("Configure enterprise Wi-Fi on the Thor");
+  if(!Arrays.asList("open","owe","wpa2","wpa3").contains(security))throw new IllegalArgumentException("Configure enterprise Wi-Fi on the device");
   if(security.equals("wpa2")&&!(password.matches("[a-fA-F0-9]{64}")||(password.getBytes(StandardCharsets.UTF_8).length>=8&&password.getBytes(StandardCharsets.UTF_8).length<=63)))throw new IllegalArgumentException("WPA2 password must be 8–63 bytes");
   if(security.equals("wpa3")&&(password.getBytes(StandardCharsets.UTF_8).length<1||password.getBytes(StandardCharsets.UTF_8).length>63))throw new IllegalArgumentException("WPA3 password must be 1–63 bytes");
   // Existing saved configurations (especially enterprise validation and BSSID preferences) stay intact.

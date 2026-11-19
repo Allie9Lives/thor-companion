@@ -33,7 +33,7 @@ class BatteryAlertsPage extends StatelessWidget {
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('Notifications'),
-              subtitle: const Text('Notify this phone about your Thor.'),
+              subtitle: const Text('Notify this phone about your device.'),
               value: o.enabled,
               onChanged: c.isDemo ? null : (v) => c.enableBatteryAlerts(v),
             ),
@@ -116,7 +116,7 @@ class BatteryAlertsPage extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             const Text(
-              'Alerts need incoming readings from the Thor. They may be delayed while out of Bluetooth range or if iOS suspends the app. Reopen the app after force-quitting it. History sync does not send old notifications.',
+              'Alerts need incoming readings from the device. They may be delayed while out of Bluetooth range or if iOS suspends the app. Reopen the app after force-quitting it. History sync does not send old notifications.',
               style: TextStyle(fontSize: 14),
             ),
           ],
@@ -367,7 +367,7 @@ class _BatteryInsightsPageState extends State<BatteryInsightsPage> {
             ),
             const SizedBox(height: 16),
             const Text(
-              'History is recorded on the Thor while monitoring is running, including when this phone is disconnected.',
+              'History is recorded on the device while monitoring is running, including when this phone is disconnected.',
               style: TextStyle(fontSize: 14),
             ),
           ],

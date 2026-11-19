@@ -18,6 +18,11 @@ public class ThorModelTest {
         eq(ThorModel.storageCapacity(240_000_000_000L), 256_000_000_000L);
         eq(ThorModel.storageCapacity(112_000_000_000L), 128_000_000_000L);
         eq(ThorModel.storageCapacity(0), null);
+        eq(ThorModel.family("Moorechip","Retroid Pocket Classic"),"retroid");eq(ThorModel.family("AYN","AYN Thor"),"ayn");eq(ThorModel.family("Google","Pixel 8"),"android");
+        eq(ThorModel.product("Moorechip","Retroid Pocket Classic"),"Retroid Pocket Classic");eq(ThorModel.product("AYN","AYN_Thor"),"AYN Thor");eq(ThorModel.product("ANBERNIC","RG556"),"Handheld Device");eq(ThorModel.product("Google","Pixel 8"),"Handheld Device");eq(ThorModel.findLabel("AYN_Thor"),"Find my Thor");eq(ThorModel.findLabel("Retroid Pocket Classic"),"Find my Retroid");eq(ThorModel.findLabel("RG556"),"Find my handheld");
+        eq(ThorModel.variant("Retroid Pocket Classic","SG4250P",5634136L*1024),"6 GB");eq(ThorModel.variant("Retroid Pocket Classic","SG4250P",3_800_000_000L),"4 GB");eq(ThorModel.cpuName("Retroid Pocket Classic","SG4250P"),"Qualcomm Snapdragon G1 Gen 2");
+        if(ThorModel.variant("Pixel 8","x",8L<<30)!=null)throw new AssertionError("Generic device got a variant");
+        eq(Telemetry.storageStandardFor("0x0400",null,null),"UFS 4.0");eq(Telemetry.storageStandardFor("unavailable","MMC","0x8"),"eMMC 5.1");eq(Telemetry.storageStandardFor(null,"MMC","0x5"),"eMMC");eq(Telemetry.storageStandardFor(null,"SD","0x8"),null);
         System.out.println("Thor model tests passed (all tiers, firmware alias, reserved RAM, unknown hardware, capacity).");
     }
 }

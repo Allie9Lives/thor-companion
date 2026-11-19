@@ -12,6 +12,7 @@ public final class ControlHelper {
     static String setting(String command,int v) {
         switch(command) {
             case "volume": if(v>=0 && v<=15) return "secondary_screen_volume_level"; break;
+            case "brightness": if(v>=1 && v<=255) return "screen_brightness"; break;
             case "hz": if(v==60 || v==120) return "peak_refresh_rate"; break;
             case "fan": if(v==0 || v==1 || v==4 || v==5) return "fan_mode"; break;
             case "performance": if(v>=0 && v<=2) return "performance_mode"; break;
@@ -57,11 +58,11 @@ public final class ControlHelper {
                         try{String token=j.optString("value","");if(!token.isEmpty()&&!token.matches("[a-f0-9]{24}"))throw new IllegalArgumentException("Invalid recording");
                             if(action.equals("record_start")){Object mode=j.get("mode");if(!(mode instanceof Number)||((Number)mode).doubleValue()!=((Number)mode).intValue())throw new IllegalArgumentException();result=ScreenRecording.start(((Number)mode).intValue(),j.getInt("quality"),j.getInt("fps"));}
                             else if(action.equals("record_status"))result=ScreenRecording.status(token);else if(action.equals("record_stop"))result=ScreenRecording.stop(token);else if(action.equals("record_clear"))result=ScreenRecording.clear(token);else throw new IllegalArgumentException("Unknown recording action");result.put("ok",true);
-                        }catch(Exception e){result=new JSONObject().put("ok",false).put("error",e instanceof IllegalArgumentException||e instanceof IllegalStateException?e.getMessage():"Screen recording unavailable. Keep the Thor open and check free storage.");}
+                        }catch(Exception e){result=new JSONObject().put("ok",false).put("error",e instanceof IllegalArgumentException||e instanceof IllegalStateException?e.getMessage():"Screen recording unavailable. Keep the device open and check free storage.");}
                         byte[] response=result.toString().getBytes(StandardCharsets.UTF_8);out.writeShort(response.length);out.write(response);out.flush();continue;
                     }
                     if("app_open".equals(j.optString("set"))||"app_close".equals(j.optString("set"))) {
-                        JSONObject result=new JSONObject();try{Object target=j.get("target");if(!(target instanceof Number)||((Number)target).doubleValue()!=((Number)target).intValue())throw new IllegalArgumentException();AppActions.run(j.getString("set"),j.getString("value"),((Number)target).intValue());result.put("ok",true);}catch(Exception e){result.put("ok",false).put("error","App action failed. Keep the Thor unlocked and check that the app supports this display.");}
+                        JSONObject result=new JSONObject();try{Object target=j.get("target");if(!(target instanceof Number)||((Number)target).doubleValue()!=((Number)target).intValue())throw new IllegalArgumentException();AppActions.run(j.getString("set"),j.getString("value"),((Number)target).intValue());result.put("ok",true);}catch(Exception e){result.put("ok",false).put("error","App action failed. Keep the device unlocked and check that the app supports this display.");}
                         byte[] response=result.toString().getBytes(StandardCharsets.UTF_8);DataOutputStream reply=new DataOutputStream(socket.getOutputStream());reply.writeShort(response.length);reply.write(response);reply.flush();continue;
                     }
                     if("activity".equals(j.optString("set"))) {
@@ -73,6 +74,14 @@ public final class ControlHelper {
                     if("wifi_identity".equals(j.optString("set"))) {
                         JSONObject observed;try{observed=WifiTrustProbe.sample();}catch(Exception e){observed=new JSONObject().put("ok",false);}
                         byte[] response=observed.toString().getBytes(StandardCharsets.UTF_8);DataOutputStream reply=new DataOutputStream(socket.getOutputStream());reply.writeShort(response.length);reply.write(response);reply.flush();continue;
+                    }
+                    if("pad".equals(j.optString("set"))) { int ok=0; try{LiveStream.pad(j);ok=1;}catch(Exception ignored){} OutputStream reply=socket.getOutputStream();reply.write(ok);reply.flush(); continue; }
+                    if("stream_open".equals(j.optString("set"))) { try{LiveStream.serve(j,socket);}catch(Exception ignored){} continue; }
+                    if("input".equals(j.optString("set"))) {
+                        boolean ok=false;
+                        try{java.lang.Process input=new ProcessBuilder(LiveStream.inputCommand(j,ScreenRecording.logical(LiveStream.integer(j,"d",0,1)))).redirectOutput(new File("/dev/null")).redirectError(new File("/dev/null")).start();ok=input.waitFor(4,java.util.concurrent.TimeUnit.SECONDS)&&input.exitValue()==0;if(!ok)input.destroyForcibly();}catch(Exception ignored){}
+                        byte[] reply=new JSONObject().put("ok",ok).put("error",ok?"":"Input failed").toString().getBytes(StandardCharsets.UTF_8);
+                        DataOutputStream out=new DataOutputStream(socket.getOutputStream());out.writeShort(reply.length);out.write(reply);out.flush();continue;
                     }
                     if("capture".equals(j.optString("set"))) {
                         DataOutputStream out=new DataOutputStream(socket.getOutputStream());
@@ -112,8 +121,8 @@ public final class ControlHelper {
                             String key=setting(command,value);
                             write(key,command.equals("led")?(value==1?"1,1":"0,0"):String.valueOf(value));
                         }
-                    } catch(Exception e) { error="Thor system control failed"; }
-                    byte[] response=new JSONObject().put("ok",error.isEmpty()).put("error",error).put("capture",true).put("protocol",10).toString().getBytes(StandardCharsets.UTF_8);
+                    } catch(Exception e) { error="Device system control failed"; }
+                    byte[] response=new JSONObject().put("ok",error.isEmpty()).put("error",error).put("capture",true).put("protocol",12).toString().getBytes(StandardCharsets.UTF_8);
                     DataOutputStream out=new DataOutputStream(socket.getOutputStream());out.writeShort(response.length);out.write(response);out.flush();
                 } catch(Exception ignored) { /* Invalid clients cannot terminate the helper. */ }
             }

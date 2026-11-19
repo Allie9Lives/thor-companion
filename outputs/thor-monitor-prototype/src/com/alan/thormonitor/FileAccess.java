@@ -50,7 +50,7 @@ final class FileAccess {
   SSLContext tls=tlsContext(c);
   SSLServerSocket socket=(SSLServerSocket)tls.getServerSocketFactory().createServerSocket();socket.setReuseAddress(true);socket.bind(new InetSocketAddress(PORT));socket.setEnabledProtocols(new String[]{"TLSv1.2"});
   server=socket;
-  workers=new ThreadPoolExecutor(2,2,30,TimeUnit.SECONDS,new ArrayBlockingQueue<Runnable>(4),new ThreadPoolExecutor.AbortPolicy());
+  workers=new ThreadPoolExecutor(4,4,30,TimeUnit.SECONDS,new ArrayBlockingQueue<Runnable>(4),new ThreadPoolExecutor.AbortPolicy());
   acceptor=Executors.newSingleThreadExecutor();acceptor.execute(()->{while(!socket.isClosed()){try{SSLSocket client=(SSLSocket)socket.accept();if(!allowedPeer(client.getInetAddress())){client.close();continue;}client.setSoTimeout(15000);active.add(client);try{workers.execute(()->serve(client));}catch(Exception e){active.remove(client);client.close();}}catch(Exception e){if(socket.isClosed())break;}}});
  }
  static synchronized SSLContext tlsContext(Context c)throws Exception{
@@ -138,19 +138,46 @@ final class FileAccess {
     byte[] bytes=new byte[size];new DataInputStream(in).readFully(bytes);byte[] data=MonitorService.networkControl(bytes);
     json(out,200,new JSONObject().put("bytes",android.util.Base64.encodeToString(data,android.util.Base64.NO_WRAP)));return;
    }
+   if(method.equals("POST")&&route.equals("/v1/input")&&!headers.containsKey("content-length")){
+    // Long-lived controller channel: one JSON event per line until the companion closes it.
+    if(!new ThorControls(app).helperReady())throw new IllegalStateException("Advanced controls are unavailable. Check Recovery setup on the device.");
+    out.write("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n".getBytes("US-ASCII"));out.flush();
+    client.setSoTimeout(30000); // the companion pings every 10 s
+    long end=android.os.SystemClock.elapsedRealtime()+LiveStream.MAX_MS;
+    while(android.os.SystemClock.elapsedRealtime()<end){
+     String event;try{event=line(in,256);}catch(EOFException closed){break;}
+     if(event.isEmpty()||event.equals("{\"t\":\"p\"}"))continue;
+     try{JSONObject j=new JSONObject(event);if("i".equals(j.optString("t")))LiveStream.sendInput(app,j);else LiveStream.sendPad(app,j);}catch(Exception e){out.write("error\n".getBytes("US-ASCII"));out.flush();}
+    }
+    return;
+   }
+   if(method.equals("GET")&&route.equals("/v1/stream")){
+    int screen=Integer.parseInt(q.getOrDefault("screen","-1")),quality=Integer.parseInt(q.getOrDefault("quality","0"));
+    if(screen<0||screen>1||quality<0||quality>1)throw new IllegalArgumentException("Choose top or bottom");
+    if(!new ThorControls(app).helperReady())throw new IllegalStateException("Advanced controls are unavailable. Check Recovery setup on the device.");
+    try(InputStream stream=LiveStream.open(app,screen,quality)){
+     // Do not read the phone's TLS socket here: a concurrent read stalls the writes below.
+     // A vanished phone is noticed when relaying the helper's 2 s keepalive fails.
+     // Raw H.264 until either side closes; Connection: close ends the body.
+     out.write("HTTP/1.1 200 OK\r\nContent-Type: video/h264\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n".getBytes("US-ASCII"));out.flush();
+     byte[] buffer=new byte[65536];long renewed=android.os.SystemClock.elapsedRealtime();
+     for(int n;(n=stream.read(buffer))!=-1;){out.write(buffer,0,n);out.flush();long now=android.os.SystemClock.elapsedRealtime();if(now-renewed>=60000){renewed=now;wake.acquire(5*60000L);}}
+    }
+    return;
+   }
    if(method.equals("GET")&&route.equals("/v1/app-icon")){byte[] icon=AppCatalog.icon(app,q.getOrDefault("package",""),q.getOrDefault("revision",""));reply(out,200,"image/png",icon.length);out.write(icon);out.flush();return;}
    if(route.startsWith("/v1/record/")){
     String action=route.substring("/v1/record/".length()),token=q.getOrDefault("token","");if(!token.isEmpty()&&!token.matches("[a-f0-9]{24}"))throw new IllegalArgumentException("Invalid recording");
     if(action.equals("file")&&method.equals("GET")){int screen=Integer.parseInt(q.getOrDefault("screen","-1"));if(screen<0||screen>1)throw new IllegalArgumentException("Invalid screen");try(RecordingBroker.Clip clip=RecordingBroker.open(app,token,screen)){reply(out,200,"video/mp4",clip.size);copy(clip.stream,out,clip.size);}return;}
     if((action.equals("status")&&method.equals("GET"))||(!action.equals("status")&&method.equals("POST")&&java.util.Arrays.asList("start","stop","clear").contains(action))){
-     if(action.equals("start")&&!wifiConnected(app))throw new IllegalStateException("Connect the Thor to Wi-Fi before recording");int mode=Integer.parseInt(q.getOrDefault("mode","0"));json(out,200,RecordingBroker.request(app,"record_"+action,token,mode,Integer.parseInt(q.getOrDefault("quality","1")),Integer.parseInt(q.getOrDefault("fps","60"))));return;
+     if(action.equals("start")&&!wifiConnected(app))throw new IllegalStateException("Connect the device to Wi-Fi before recording");int mode=Integer.parseInt(q.getOrDefault("mode","0"));json(out,200,RecordingBroker.request(app,"record_"+action,token,mode,Integer.parseInt(q.getOrDefault("quality","1")),Integer.parseInt(q.getOrDefault("fps","60"))));return;
     }
     throw new IllegalArgumentException("Unknown recording action");
    }
    if(method.equals("POST")&&route.equals("/v1/capture")){
     int mode=Integer.parseInt(q.getOrDefault("mode","-1"));if(mode<0||mode>2)throw new IllegalArgumentException("Choose top, bottom or both");
-    if(!wifiConnected(app))throw new IllegalStateException("Connect the Thor to Wi-Fi to capture screenshots");
-    if(!new ThorControls(app).helperReady())throw new IllegalStateException("Advanced controls are unavailable. Check Recovery setup on the Thor.");
+    if(!wifiConnected(app))throw new IllegalStateException("Connect the device to Wi-Fi to capture screenshots");
+    if(!new ThorControls(app).helperReady())throw new IllegalStateException("Advanced controls are unavailable. Check Recovery setup on the device.");
     if(!capturing.compareAndSet(false,true)){json(out,409,new JSONObject().put("error","A screenshot is already being captured"));return;}
     ScheduledFuture<?> deadline=WebHttp.deadline(socket,90000);
     try{byte[] image=new ThorControls(app).captureImage(mode);reply(out,200,"application/x-thor-screenshot",image.length);copy(new ByteArrayInputStream(image),out,image.length);out.flush();}finally{capturing.set(false);deadline.cancel(false);}

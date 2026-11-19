@@ -244,7 +244,7 @@ class _FilesPageState extends State<FilesPage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                connection?.name ?? 'Link your Thor',
+                connection?.name ?? 'Link your device',
                 style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w600,

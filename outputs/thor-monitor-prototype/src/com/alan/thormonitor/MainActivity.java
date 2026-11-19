@@ -222,7 +222,7 @@ public class MainActivity extends Activity {
     private void toggleMonitoring(){
         if(!MonitorService.running){prefs.edit().putBoolean("readings_paused",false).apply();startMonitoring(false);return;}
         if(MonitorService.paused(this)){MonitorService.pauseReadings(this,false);update();return;}
-        AlertDialog dialog=new AlertDialog.Builder(this,dialogTheme()).setTitle("Pause monitoring?").setMessage("Readings and battery history will pause. Remote controls stay available. This does not put the Thor to sleep.").setNegativeButton("Cancel",null).setPositiveButton("Pause",(d,w)->{MonitorService.pauseReadings(this,true);update();}).create();dialog.show();controllerDialog(dialog);
+        AlertDialog dialog=new AlertDialog.Builder(this,dialogTheme()).setTitle("Pause monitoring?").setMessage("Readings and battery history will pause. Remote controls stay available. This does not put the device to sleep.").setNegativeButton("Cancel",null).setPositiveButton("Pause",(d,w)->{MonitorService.pauseReadings(this,true);update();}).create();dialog.show();controllerDialog(dialog);
     }
     private void toggleHostService(String key){
         if(!serviceChanges.add(key))return;HostOverviewView view=overview;TextView pill=key.equals("web")?view.webStatus:view.ftpStatus;pill.setAlpha(.6f);
@@ -235,11 +235,11 @@ public class MainActivity extends Activity {
         primary=button(serviceRow,MonitorService.running?"Stop monitoring":"Start monitoring",!MonitorService.running,()->{if(MonitorService.running){prefs.edit().putBoolean("monitor_wanted",false).apply();stopService(new Intent(this,MonitorService.class));handler.postDelayed(this::build,250);}else startMonitoring(false);});
         LinearLayout.LayoutParams serviceAction=new LinearLayout.LayoutParams(dp(180),-2);serviceAction.leftMargin=dp(16);primary.setLayoutParams(serviceAction);primary.setPadding(dp(12),dp(10),dp(12),dp(10));
         health=null;controlsStatus.setVisibility(View.GONE);
-        LinearLayout look=disclosure("Appearance","palette","Theme, color and app icon");button(look,"Theme",false,this::appearance);button(look,"Thor color & icon",false,this::colorPicker);
+        LinearLayout look=disclosure("Appearance","palette","Theme, color and app icon");button(look,"Theme",false,this::appearance);button(look,"Device color & icon",false,this::colorPicker);
         LinearLayout background=disclosure("Monitoring","moon","Battery saving and automatic restart");body(background,"Use Home or Back to leave monitoring running. Stop monitoring ends the service.");button(background,"Battery saving",false,()->{screen=5;build();});
-        toggle(background,"Start after restart","Resume after the Thor is unlocked.","start_on_boot",true);
+        toggle(background,"Start after restart","Resume after the device is unlocked.","start_on_boot",true);
         toggle(background,"Recover if interrupted","Restore monitoring if Android interrupts it.","recover_dismissal",true);if(HostBackgroundProtection.supported()){toggle(background,"Protect from Recents cleanup","Keep the service connected when dismissing the app.","protect_recents",true);if(prefs.getBoolean("protect_recents",true)){body(background,HostBackgroundProtection.status(this));if(!HostBackgroundProtection.active(this))button(background,"Allow background protection",false,this::allowBackgroundProtection);}}
-        LinearLayout locator=disclosure("Find my Thor","locator","Stop sound panel");
+        LinearLayout locator=disclosure(ThorModel.findLabel(),"locator","Stop sound panel");
         toggle(locator,"Stop panel over apps","Show a Stop button over games and other apps.","finder_overlay",true);
         body(locator,LocatorStopPanel.allowed(this)?"Overlay permission allowed":"Overlay permission needed");
         button(locator,"Overlay permission",false,()->startActivityForResult(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName())),54));
@@ -260,7 +260,7 @@ public class MainActivity extends Activity {
         ftpButton=button(ftp,FtpAccess.running()?"Stop FTP server":"Start FTP server",false,()->{try{FtpAccess.command(this,FtpAccess.running()?"ftp_stop":"ftp_start","local");build();}catch(Exception e){Toast.makeText(this,e.getMessage(),Toast.LENGTH_LONG).show();}});
         button(ftp,"Connection details",false,()->{try{org.json.JSONObject j=FtpAccess.command(this,"ftp_status","local");if(!j.optBoolean("running")){Toast.makeText(this,"Start the FTP server first",Toast.LENGTH_LONG).show();return;}new AlertDialog.Builder(this).setTitle("FTP connection").setMessage("FTP · TLS/SSL Explicit encryption · Passive\n\nHost: "+j.optJSONArray("hosts")+"\nPort: "+j.optInt("port")+"\nUsername: thor\nPassword: "+j.optString("password")+"\n\nSHA-256: "+j.optString("pin")).setPositiveButton("Done",null).show();}catch(Exception e){Toast.makeText(this,"Connection details unavailable",Toast.LENGTH_LONG).show();}});
         LinearLayout restore=disclosure("Controls recovery","shield","Restore controls after a restart");recoveryStatus=body(restore,recoveryLabel());button(restore,"Recovery setup",false,()->openRecovery(false));
-        LinearLayout keyboard=disclosure("Phone keyboard","keyboard","Type on the Thor from your phone");body(keyboard,"Enable Thor Remote Keyboard, then select it. Your usual keyboard remains available.");
+        LinearLayout keyboard=disclosure("Phone keyboard","keyboard","Type on the device from your phone");body(keyboard,"Enable Thor Remote Keyboard, then select it. Your usual keyboard remains available.");
         button(keyboard,"Enable keyboard",false,()->startActivity(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)));button(keyboard,"Select keyboard",false,()->getSystemService(android.view.inputmethod.InputMethodManager.class).showInputMethodPicker());
         LinearLayout device=navigationGroup("Device");
         navigationRow(device,"Review setup","Permissions and optional features","shield",false,()->{screen=1;step=0;build();});
@@ -282,7 +282,7 @@ public class MainActivity extends Activity {
         if(!nearby()){Toast.makeText(this,"Allow Bluetooth access first",Toast.LENGTH_LONG).show();return;}
         List<BluetoothDevice> phones=MonitorService.repairCandidates();
         if(phones.isEmpty()){
-            new AlertDialog.Builder(this).setTitle("Repair phone connection").setMessage("Keep monitoring on. Tap Reconnect on your phone, then return here within five minutes. Only bonded phones denied by this app can be approved.\n\nIf your phone says pairing information was removed, forget this Thor in the phone’s Bluetooth settings and connect again first.").setPositiveButton("OK",null).show();return;
+            new AlertDialog.Builder(this).setTitle("Repair phone connection").setMessage("Keep monitoring on. Tap Reconnect on your phone, then return here within five minutes. Only bonded phones denied by this app can be approved.\n\nIf your phone says pairing information was removed, forget this device in the phone’s Bluetooth settings and connect again first.").setPositiveButton("OK",null).show();return;
         }
         String[] labels=new String[phones.size()];
         for(int i=0;i<phones.size();i++){BluetoothDevice d=phones.get(i);String name=d.getName();String address=d.getAddress();labels[i]=(name==null?"Phone":name)+" · "+address.substring(address.length()-5);}
@@ -308,7 +308,7 @@ public class MainActivity extends Activity {
     }
     private void powerSettings(){
         page.addView(text("Battery saving",28,true));gap(page,16);
-        LinearLayout mode=box("CPU keep-alive");body(mode,"Keep readings available, or allow the Thor to sleep.");
+        LinearLayout mode=box("CPU keep-alive");body(mode,"Keep readings available, or allow the device to sleep.");
         int selected=prefs.getInt("rest_mode",0);String[] labels={"Overnight · recommended","Always on · not recommended","Passive · allow sleep at any time"};
         for(int i=0;i<labels.length;i++){final int value=i;button(mode,(selected==i?"✓  ":"")+labels[i],selected==i,()->{prefs.edit().putInt("rest_mode",value).putBoolean("always_on",true).apply();saveRest();});}
         LinearLayout hours=box("Overnight schedule");body(hours,"Local time. Overnight pauses apply only on trusted Wi-Fi.");
@@ -329,7 +329,7 @@ public class MainActivity extends Activity {
     }
     private void setup(){
         String[] titles={"Choose your color","Connect with Bluetooth","Stay connected","Enable device controls","Optional features","Ready to connect"};
-        String[] subtitles={"Match the theme and icon. Change them anytime.","Pair with your phone for readings and controls.","Allow alerts and reliable background monitoring.","Device controls, remote apps and screen capture.","Add these now, or return to Settings later.","Your Thor is ready for its companion."};
+        String[] subtitles={"Match the theme and icon. Change them anytime.","Pair with your phone for readings and controls.","Allow alerts and reliable background monitoring.","Device controls, remote apps and screen capture.","Add these now, or return to Settings later.","Your device is ready for its companion."};
         String[] icons={"palette","bluetooth","bell","shield","options","phone"};setupHeading(titles[step],subtitles[step],icons[step]);
         if(step==0){
             LinearLayout colors=box(null);colorButtons(colors,null);
@@ -338,9 +338,9 @@ public class MainActivity extends Activity {
             nearbyAction=button(b,"Allow Bluetooth access",true,this::requestNearby);
             bluetoothAction=button(b,"Turn on Bluetooth",false,()->{if(nearby())startActivity(new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE));else requestNearby();});
         }else if(step==2){
-            LinearLayout n=box("Notifications");body(n,"Monitoring status and Find my Thor alerts.");notificationStatus=body(n,"");notificationAction=button(n,"Allow notifications",false,this::requestNotifications);
+            LinearLayout n=box("Notifications");body(n,"Monitoring status and "+ThorModel.findLabel()+" alerts.");notificationStatus=body(n,"");notificationAction=button(n,"Allow notifications",false,this::requestNotifications);
             LinearLayout battery=box("Background access");body(battery,"Allow unrestricted battery use for reliable monitoring.");batteryStatus=body(battery,"");batteryAction=button(battery,"Battery permission",false,()->{try{startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,Uri.parse("package:"+getPackageName())));}catch(Exception e){startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));}});
-            LinearLayout options=disclosure("Automatic restart","moon","Resume after restart or interruption");toggle(options,"Start after restart","Resume after the Thor is unlocked.","start_on_boot",true);toggle(options,"Recover if interrupted","Manual Stop always keeps monitoring off.","recover_dismissal",true);if(HostBackgroundProtection.supported()){toggle(options,"Protect from Recents cleanup","Keep monitoring connected when dismissing the app.","protect_recents",true);if(prefs.getBoolean("protect_recents",true)){body(options,HostBackgroundProtection.status(this));if(!HostBackgroundProtection.active(this))button(options,"Allow background protection",false,this::allowBackgroundProtection);}}
+            LinearLayout options=disclosure("Automatic restart","moon","Resume after restart or interruption");toggle(options,"Start after restart","Resume after the device is unlocked.","start_on_boot",true);toggle(options,"Recover if interrupted","Manual Stop always keeps monitoring off.","recover_dismissal",true);if(HostBackgroundProtection.supported()){toggle(options,"Protect from Recents cleanup","Keep monitoring connected when dismissing the app.","protect_recents",true);if(prefs.getBoolean("protect_recents",true)){body(options,HostBackgroundProtection.status(this));if(!HostBackgroundProtection.active(this))button(options,"Allow background protection",false,this::allowBackgroundProtection);}}
         }else if(step==3){
             LinearLayout b=box("Controls recovery");body(b,"Pair once on trusted Wi-Fi. Controls restore automatically after a restart.");gap(b,10);recoveryStatus=body(b,recoveryLabel());button(b,"Set up controls",true,()->openRecovery(true));gap(b,10);body(b,"Optional. Bluetooth monitoring works without this step.");
         }else if(step==4){
@@ -348,13 +348,13 @@ public class MainActivity extends Activity {
             toggle(files,"Enable Wi-Fi access","Connect over Wi-Fi or your existing VPN.","files_enabled",false);
             button(files,"Shared storage permission",false,()->{prefs.edit().putBoolean("files_full",true).apply();startActivityForResult(new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,Uri.parse("package:"+getPackageName())),53);});
             button(files,"Choose internal folder",false,()->chooseFolder(51));button(files,"Choose microSD folder",false,()->chooseFolder(52));
-            LinearLayout locator=disclosure("Find my Thor","locator","Show a Stop button over other apps");body(locator,"Allow the overlay to stop locator sounds from any app.");button(locator,"Overlay permission",false,()->startActivityForResult(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName())),54));
+            LinearLayout locator=disclosure(ThorModel.findLabel(),"locator","Show a Stop button over other apps");body(locator,"Allow the overlay to stop locator sounds from any app.");button(locator,"Overlay permission",false,()->startActivityForResult(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName())),54));
             LinearLayout keyboard=disclosure("Phone keyboard","keyboard","Type from your phone");body(keyboard,"Enable Thor Remote Keyboard, then select it.");button(keyboard,"Enable keyboard",false,()->startActivity(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)));button(keyboard,"Select keyboard",false,()->getSystemService(android.view.inputmethod.InputMethodManager.class).showInputMethodPicker());
-            LinearLayout web=disclosure("Web Ops","browser","Optional browser access");body(web,"Set an owner login to use your Thor from a browser on Wi-Fi or a private VPN.");button(web,"Set up Web Ops",false,this::openWebOps);
+            LinearLayout web=disclosure("Web Ops","browser","Optional browser access");body(web,"Set an owner login to use your device from a browser on Wi-Fi or a private VPN.");button(web,"Set up Web Ops",false,this::openWebOps);
             LinearLayout updater=disclosure("Updates","options","GitHub releases and Obtainium");body(updater,"Use the built-in checker or add Thor Monitor to Obtainium.");button(updater,"Check for updates",false,()->{openUpdates();HostUpdates.check(this,true);});button(updater,"Add to Obtainium",false,()->HostUpdates.obtainium(this));
             LinearLayout saving=disclosure("Battery saving","moon","Set up overnight pauses after connecting");body(saving,"In Settings → Battery saving, add trusted Wi-Fi for overnight pauses. Default: three hours with screens off, 9 PM–6 AM. Monitoring stays awake until you add a trusted network.");
         }else{
-            LinearLayout b=box("On your phone");setupInstruction(b,"1","Open Thor Companion.");setupInstruction(b,"2","Find your Thor and tap Connect.");setupInstruction(b,"3","Confirm pairing on both devices.");gap(b,10);body(b,"Keep the Thor open for the first connection.");
+            LinearLayout b=box("On your phone");setupInstruction(b,"1","Open Thor Companion.");setupInstruction(b,"2","Find your device and tap Connect.");setupInstruction(b,"3","Confirm pairing on both devices.");gap(b,10);body(b,"Keep the device open for the first connection.");
         }
         primary=button(page,step==5?"Start monitoring":"Continue",true,()->{if(step==1&&!nearby()){requestNearby();return;}if(step==1&&!bluetooth()){startActivity(new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE));return;}if(step<5){step++;build();}else{prefs.edit().putBoolean("setup_complete",true).apply();startMonitoring(false);}});
         if(step>0)backAction=button(page,"Back",false,()->{step--;build();});
@@ -369,19 +369,19 @@ public class MainActivity extends Activity {
         return "One-time pairing not completed";
     }
     private void recovery(){
-        page.addView(text("Controls recovery",28,true));body(page,"Pair Thor Monitor with Android on this Thor. Phone pairing is separate.");gap(page,18);
+        page.addView(text("Controls recovery",28,true));body(page,"Pair Thor Monitor with Android on this device. Phone pairing is separate.");gap(page,18);
         if(!Recovery.paired(this)||repairing){
             LinearLayout grant=box("1. Wireless debugging");body(grant,"Open Android settings on the other screen. Tap the highlighted Wireless debugging option, then turn it on.");body(grant,"Allow your trusted network if Android asks.");button(grant,"Open wireless debugging",false,this::openWireless);
-            LinearLayout pairing=box("2. Pair this Thor");body(pairing,"On the other screen, tap Pair device with pairing code. Enter its port and six-digit code here.");body(pairing,"Port only — not the IP address. We fill it in when detected.");
+            LinearLayout pairing=box("2. Pair this device");body(pairing,"On the other screen, tap Pair device with pairing code. Enter its port and six-digit code here.");body(pairing,"Port only — not the IP address. We fill it in when detected.");
             portField=field(pairing,"Pairing port · port only",64,false);portField.setKeyListener(android.text.method.DigitsKeyListener.getInstance("0123456789.:[]"));portField.setHint("Port number, e.g. 37123");portField.setId(1001);codeField=field(pairing,"Six-digit pairing code",6,true);codeField.setId(1002);
             button(pairing,"Pair controls",true,()->{String code=codeField.getText().toString().trim();int port=PairingInput.port(portField.getText().toString());Recovery.pair(this,port,code);if(port>0&&code.matches("[0-9]{6}"))codeField.setText("");});
-        }else{LinearLayout paired=box("This Thor is paired");body(paired,"The pairing survives restarts and app updates.");button(paired,"Pair again",false,()->{repairing=true;build();});}
+        }else{LinearLayout paired=box("This device is paired");body(paired,"The pairing survives restarts and app updates.");button(paired,"Pair again",false,()->{repairing=true;build();});}
         LinearLayout readiness=box("Automatic recovery");recoveryStatus=body(readiness,recoveryLabel());
         if(Recovery.paired(this)){
             toggle(readiness,"Restore controls automatically","Runs while monitoring and Wi-Fi are available.","recover_controls",false);
-            button(readiness,"Retry now",false,()->Recovery.enable(this,true));body(readiness,"Unlock the Thor once after each restart.");
+            button(readiness,"Retry now",false,()->Recovery.enable(this,true));body(readiness,"Unlock the device once after each restart.");
         }else body(readiness,"Complete Pair controls above to enable automatic recovery.");
-        LinearLayout help=disclosure("Setup help","shield","Developer options and pairing details");body(help,"Enable Developer options by tapping Build number seven times in Android settings. Use the port shown with the pairing code, not the connection port. Codes expire; request a new one if needed.");body(help,"When prompted, allow wireless debugging on your trusted network. Setup and recovery run on the Thor; no computer is required.");button(help,"Open wireless debugging",false,this::openWireless);
+        LinearLayout help=disclosure("Setup help","shield","Developer options and pairing details");body(help,"Enable Developer options by tapping Build number seven times in Android settings. Use the port shown with the pairing code, not the connection port. Codes expire; request a new one if needed.");body(help,"When prompted, allow wireless debugging on your trusted network. Setup and recovery run on the device; no computer is required.");button(help,"Open wireless debugging",false,this::openWireless);
         button(page,recoveryReturn==1||!prefs.getBoolean("setup_complete",false)?"Back to setup":"Back to Overview",false,this::leaveRecovery);Recovery.watchPairing(this);
     }
     private EditText field(LinearLayout parent,String hint,int length,boolean secret){gap(parent,12);parent.addView(text(hint,14,true));EditText e=new EditText(this);e.setHint(secret?"6 digits":"From the pairing window");e.setContentDescription(hint);e.setSelectAllOnFocus(true);e.setTextSize(16);e.setTextColor(ink);e.setHintTextColor(muted);e.setBackgroundTintList(ColorStateList.valueOf(muted));e.setSingleLine(true);e.setInputType(InputType.TYPE_CLASS_NUMBER|(secret?InputType.TYPE_NUMBER_VARIATION_PASSWORD:0));e.setTypeface(Typeface.create("sans-serif",Typeface.NORMAL));e.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(length)});e.setSaveEnabled(!secret);e.setMinimumHeight(dp(52));parent.addView(e,new LinearLayout.LayoutParams(-1,-2));return e;}
@@ -424,7 +424,7 @@ public class MainActivity extends Activity {
         }
     }
     private void colorPicker(){
-        Dialog dialog=new Dialog(this);LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(22),dp(22),dp(22),dp(16));content.setBackground(shape(card,22,true));content.addView(text("Thor color & icon",22,true));gap(content,8);body(content,ThorColor.EXPLANATION);colorButtons(content,dialog);button(content,"Cancel",false,dialog::dismiss);ScrollView scroll=new ScrollView(this);scroll.addView(content);dialog.setContentView(scroll);dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);dialog.show();controllerDialog(dialog);dialog.getWindow().setLayout(Math.min(dp(400),getResources().getDisplayMetrics().widthPixels-dp(40)),-2);
+        Dialog dialog=new Dialog(this);LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(22),dp(22),dp(22),dp(16));content.setBackground(shape(card,22,true));content.addView(text("Device color & icon",22,true));gap(content,8);body(content,ThorColor.EXPLANATION);colorButtons(content,dialog);button(content,"Cancel",false,dialog::dismiss);ScrollView scroll=new ScrollView(this);scroll.addView(content);dialog.setContentView(scroll);dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);dialog.show();controllerDialog(dialog);dialog.getWindow().setLayout(Math.min(dp(400),getResources().getDisplayMetrics().widthPixels-dp(40)),-2);
     }
     private void requestNotifications(){
         if(prefs.getBoolean("asked_notifications",false)&&!shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)){

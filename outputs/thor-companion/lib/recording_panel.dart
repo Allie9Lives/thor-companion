@@ -44,10 +44,11 @@ class _RecordingPanelState extends State<RecordingPanel> {
   String get token => session?['token'] as String? ?? '';
   String get screen =>
       const ['top', 'bottom', 'both'][(session?['mode'] as int?) ?? mode];
-  String get elapsed {
-    final seconds = ((session?['elapsed_ms'] as num? ?? 0) / 1000).floor();
-    return '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
-  }
+  static String clock(int seconds) =>
+      '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
+  String get elapsed =>
+      clock(((session?['elapsed_ms'] as num? ?? 0) / 1000).floor());
+  String get limit => clock((session?['max_seconds'] as num? ?? 180).toInt());
 
   String get savedKey => '${widget.network.connection?.pin ?? ''}:$token';
   @override
@@ -97,7 +98,7 @@ class _RecordingPanelState extends State<RecordingPanel> {
     final prior = token;
     if (prior.isNotEmpty && next['state'] == 'idle') {
       message = saved
-          ? 'Saved to Photos · Thor copy removed'
+          ? 'Saved to Photos · device copy removed'
           : 'The temporary recording expired or was removed.';
     }
     session = next;
@@ -137,6 +138,7 @@ class _RecordingPanelState extends State<RecordingPanel> {
 
   Future<void> start() async {
     if (!ready || busy || hasClip) return;
+    if (widget.network.controller.singleScreen) mode = 0;
     busy = true;
     error = null;
     message = 'Starting recording…';
@@ -170,7 +172,7 @@ class _RecordingPanelState extends State<RecordingPanel> {
       ? error.message
       : error is PlatformException
       ? error.message ?? 'Could not save recording.'
-      : 'Could not reach the recording. Check the network and keep the Thor open.';
+      : 'Could not reach the recording. Check the network and keep the device open.';
   Future<void> stopAndSave() async {
     if (!ready || busy) return;
     busy = true;
@@ -234,7 +236,7 @@ class _RecordingPanelState extends State<RecordingPanel> {
         }
         transferring = false;
         progress = null;
-        message = screen == 'both' && Platform.isIOS
+        message = screen == 'both'
             ? 'Combining screens and saving to Photos…'
             : 'Saving to Photos…';
         changed();
@@ -269,10 +271,10 @@ class _RecordingPanelState extends State<RecordingPanel> {
         await widget.network.transport!.recording('clear', token: token);
         session = {'state': 'idle'};
       } catch (_) {
-        message = 'Saved to Photos. Reconnect to remove the Thor copy.';
+        message = 'Saved to Photos. Reconnect to remove the device copy.';
       }
       if (session?['state'] == 'idle') {
-        message = 'Saved to Photos · Thor copy removed';
+        message = 'Saved to Photos · device copy removed';
       }
       for (final file in files.values) {
         try {
@@ -285,7 +287,7 @@ class _RecordingPanelState extends State<RecordingPanel> {
         'Recording save failed: ${e is PlatformException ? "${e.code}: ${e.details}" : e.runtimeType}',
       );
       error = cancelled
-          ? 'Transfer cancelled. The Thor copy is still available.'
+          ? 'Transfer cancelled. The device copy is still available.'
           : describe(e);
     } finally {
       busy = false;
@@ -301,7 +303,7 @@ class _RecordingPanelState extends State<RecordingPanel> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Discard recording?'),
-        content: const Text('Deletes the temporary clips from the Thor.'),
+        content: const Text('Deletes the temporary clips from the device.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -360,18 +362,20 @@ class _RecordingPanelState extends State<RecordingPanel> {
           style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 16),
-        SegmentedButton<int>(
-          segments: const [
-            ButtonSegment(value: 0, label: Text('Top')),
-            ButtonSegment(value: 1, label: Text('Bottom')),
-            ButtonSegment(value: 2, label: Text('Both')),
-          ],
-          selected: {mode},
-          onSelectionChanged: busy || hasClip
-              ? null
-              : (choice) => setState(() => mode = choice.single),
-        ),
-        const SizedBox(height: 16),
+        if (!widget.network.controller.singleScreen) ...[
+          SegmentedButton<int>(
+            segments: const [
+              ButtonSegment(value: 0, label: Text('Top')),
+              ButtonSegment(value: 1, label: Text('Bottom')),
+              ButtonSegment(value: 2, label: Text('Both')),
+            ],
+            selected: {mode},
+            onSelectionChanged: busy || hasClip
+                ? null
+                : (choice) => setState(() => mode = choice.single),
+          ),
+          const SizedBox(height: 16),
+        ],
         const Text(
           'Quality',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
@@ -414,7 +418,7 @@ class _RecordingPanelState extends State<RecordingPanel> {
           ),
         if (recording) ...[
           Text(
-            'Recording ${screen == 'both' ? 'both screens' : '$screen screen'} · $elapsed / 3:00',
+            'Recording ${screen == 'both' ? 'both screens' : '$screen screen'} · $elapsed / $limit',
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
           ),
@@ -434,7 +438,7 @@ class _RecordingPanelState extends State<RecordingPanel> {
               recording
                   ? 'Stop & save'
                   : saved
-                  ? 'Remove Thor copy'
+                  ? 'Remove device copy'
                   : 'Save to Photos',
             ),
           ),

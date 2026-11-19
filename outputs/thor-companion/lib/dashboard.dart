@@ -1,4 +1,5 @@
 import 'focused_apps.dart';
+import 'device_switcher.dart';
 import 'apps_page.dart';
 import 'package:flutter/material.dart';
 import 'companion_controller.dart';
@@ -37,13 +38,32 @@ class Dashboard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          h?.deviceName ?? c.selected?.name ?? 'Your Thor',
-          style: const TextStyle(
-            fontSize: 28,
-            height: 1.12,
-            fontWeight: FontWeight.w600,
-            letterSpacing: -.65,
+        Semantics(
+          button: !c.isDemo,
+          hint: c.isDemo ? null : 'Switch device',
+          child: InkWell(
+            key: const ValueKey('device-switcher'),
+            borderRadius: BorderRadius.circular(10),
+            onTap: c.isDemo ? null : () => showDevices(context, c),
+            child: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    h?.deviceName ?? c.selected?.name ?? 'Your device',
+                    style: const TextStyle(
+                      fontSize: 28,
+                      height: 1.12,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -.65,
+                    ),
+                  ),
+                ),
+                if (!c.isDemo) ...[
+                  const SizedBox(width: 6),
+                  Icon(Icons.expand_more, color: secondaryText),
+                ],
+              ],
+            ),
           ),
         ),
         const SizedBox(height: 12),
@@ -116,11 +136,7 @@ class Dashboard extends StatelessWidget {
                 Icons.storage_outlined,
                 trailing: Padding(
                   padding: const EdgeInsets.only(left: 8),
-                  child: tag(
-                    h?.ufsVersion == null
-                        ? 'UFS unknown'
-                        : 'UFS ${h!.ufsVersion}',
-                  ),
+                  child: tag(h?.storageLabel ?? 'Storage type unknown'),
                 ),
               ),
               SizedBox(height: 18),
@@ -219,14 +235,7 @@ class Dashboard extends StatelessWidget {
             ],
           ),
         ),
-        if (c.stale && !c.isDemo) ...[
-          SizedBox(height: 14),
-          notice(
-            'Out of date',
-            'These readings may be old. Check that monitoring is running on your Thor.',
-            warning: true,
-          ),
-        ],
+
         if (!c.connected && !c.isDemo) ...[
           SizedBox(height: 16),
           FilledButton.icon(
@@ -234,7 +243,7 @@ class Dashboard extends StatelessWidget {
                 ? null
                 : () => c.connect(c.selected!),
             icon: Icon(Icons.bluetooth_connected),
-            label: Text(c.busy ? 'Connecting…' : 'Reconnect to Thor'),
+            label: Text(c.busy ? 'Connecting…' : 'Reconnect to the device'),
           ),
         ],
       ],
@@ -476,6 +485,7 @@ class Dashboard extends StatelessWidget {
         child: Column(
           children: [
             FocusedApps(
+              screens: c.screens,
               device: c.selected?.id,
               imageConnection: c.appImageConnection,
               apps: (c.activity?['apps'] as List? ?? [])
@@ -665,7 +675,7 @@ class Dashboard extends StatelessWidget {
               ),
               SizedBox(height: 8),
               Text(
-                '${capacity(s.sdTotalBytes)} usable total · ${(fraction * 100).round()}% used',
+                '${cardSize(s.sdTotalBytes) == null ? '' : '${cardSize(s.sdTotalBytes)} card · '}${capacity(s.sdTotalBytes)} usable · ${(fraction * 100).round()}% used',
                 style: TextStyle(fontSize: 14, color: p.secondaryText),
               ),
             ],
@@ -761,10 +771,7 @@ class DevicePage extends StatelessWidget {
               ),
               detail('GPU', h?.gpuName ?? 'Unavailable'),
               detail('System RAM', capacity(h?.ramBytes, decimals: 1)),
-              detail(
-                'Storage standard',
-                h?.ufsVersion == null ? 'Unknown' : 'UFS ${h!.ufsVersion}',
-              ),
+              detail('Storage standard', h?.storageLabel ?? 'Unknown'),
               detail('Storage chip', h?.storageModel ?? 'Unavailable'),
               detail(
                 'Usable data capacity',
@@ -816,7 +823,7 @@ class DevicePage extends StatelessWidget {
               ),
               SizedBox(height: 8),
               Text(
-                'USB input shows the power measured by the Thor. Remaining charge is not a battery health measurement.',
+                'USB input shows the power measured by the device. Remaining charge is not a battery health measurement.',
                 style: TextStyle(color: secondaryText, fontSize: 16),
               ),
             ],
@@ -901,7 +908,7 @@ class DevicePage extends StatelessWidget {
     final forget = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Forget this Thor?'),
+        title: Text('Forget this device?'),
         content: Text(
           'Removes the remembered device from this app. Your phone’s Bluetooth pairing is unchanged.',
         ),

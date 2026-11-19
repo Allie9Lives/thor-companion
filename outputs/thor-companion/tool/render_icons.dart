@@ -35,7 +35,7 @@ void main() {
                     const Offset(112, 112),
                     const Offset(912, 912),
                     const [
-                      Color(0xFFC08A00),
+                      Color(0xFF8D6500),
                       Color(0xFF24794B),
                       Color(0xFF285BC5),
                       Color(0xFFBA4141),
@@ -82,7 +82,7 @@ void main() {
           const Color(0xFFF5EFFB),
           false,
         ),
-        'Rainbow': (const Color(0xFFFAFBFD), Colors.white, Colors.white, true),
+        'Rainbow': (const Color(0xFFC6C4C0), Colors.white, const Color(0xFFC6C4C0), true),
       };
       for (final variant in variants.entries) {
         final colors = variant.value;

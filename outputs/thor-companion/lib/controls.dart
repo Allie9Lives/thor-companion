@@ -6,6 +6,7 @@ import 'ui.dart';
 import 'design_components.dart';
 import 'keyboard_page.dart';
 import 'screenshot_page.dart';
+import 'live_view_page.dart';
 import 'files_page.dart';
 import 'ftp_page.dart';
 import 'apps_page.dart';
@@ -102,8 +103,8 @@ class _ControlsPageState extends State<ControlsPage> {
   Future<void> _power(int action) async {
     final label = switch (action) {
       0 => 'Sleep screens',
-      1 => 'Restart Thor',
-      2 => 'Shut down Thor',
+      1 => 'Restart device',
+      2 => 'Shut down device',
       3 => 'Wake screens',
       _ => 'Allow deep sleep',
     };
@@ -117,7 +118,7 @@ class _ControlsPageState extends State<ControlsPage> {
                 ? 'Release Thor Monitor’s CPU keep-alive and turn off the screens. Android decides when it sleeps; other apps may keep it awake. Remote commands may stop arriving until it wakes. Keep-alive restores at the configured local restore time, if monitoring stays enabled.'
                 : action == 1
                 ? 'Running games and apps will close. Monitoring resumes after restart if Start after restart is enabled.'
-                : 'Running games and apps will close and the phone will disconnect. You will need to turn the Thor on again.',
+                : 'Running games and apps will close and the phone will disconnect. You will need to turn the device on again.',
           ),
           actions: [
             TextButton(
@@ -200,8 +201,7 @@ class _ControlsPageState extends State<ControlsPage> {
           ],
         ),
         const SizedBox(height: 12),
-        if (c.controlError != null)
-          notice('Controls', c.controlError!, warning: true),
+
         surface(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -234,7 +234,7 @@ class _ControlsPageState extends State<ControlsPage> {
                         selected: primary && locatorActive,
                         color: AppPalette.of(context).isRainbow
                             ? AppPalette.of(context).rainbowColors[[
-                                    'Find my Thor',
+                                    c.findLabel,
                                     'Open files',
                                     'App drawer',
                                     'FTP server',
@@ -257,7 +257,7 @@ class _ControlsPageState extends State<ControlsPage> {
                       tool(
                         c.controlNumber('find') == 1
                             ? 'Stop sound'
-                            : 'Find my Thor',
+                            : c.findLabel,
                         c.controlNumber('find') == 1
                             ? Icons.volume_off_outlined
                             : Icons.volume_up_outlined,
@@ -293,6 +293,11 @@ class _ControlsPageState extends State<ControlsPage> {
                         'Open keyboard',
                         Icons.keyboard_outlined,
                         () => _openTool(RemoteKeyboardPage(controller: c)),
+                      ),
+                      tool(
+                        'Live view',
+                        Icons.cast_outlined,
+                        () => _openTool(LiveViewPage(controller: c)),
                       ),
                       tool(
                         'Screen capture',
@@ -349,26 +354,28 @@ class _ControlsPageState extends State<ControlsPage> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const SectionHeading('Brightness', Icons.brightness_6_outlined),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Sync screens'),
-                  value: brightnessLinked,
-                  onChanged: (v) => _setLinked('brightness', v),
-                ),
+                if (!c.singleScreen)
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Sync screens'),
+                    value: brightnessLinked,
+                    onChanged: (v) => _setLinked('brightness', v),
+                  ),
                 slider(
-                  'Top screen',
+                  c.singleScreen ? 'Screen' : 'Top screen',
                   'brightness',
                   'top',
                   c.controlNumber('bt'),
-                  brightnessLinked,
+                  brightnessLinked && !c.singleScreen,
                 ),
-                slider(
-                  'Bottom screen',
-                  'brightness',
-                  'bottom',
-                  c.controlNumber('bb'),
-                  brightnessLinked,
-                ),
+                if (!c.singleScreen)
+                  slider(
+                    'Bottom screen',
+                    'brightness',
+                    'bottom',
+                    c.controlNumber('bb'),
+                    brightnessLinked,
+                  ),
               ],
             ),
           ),
@@ -378,34 +385,38 @@ class _ControlsPageState extends State<ControlsPage> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const SectionHeading('Volume', Icons.volume_up_outlined),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Sync volume'),
-                  value: volumeLinked,
-                  onChanged: locatorActive
-                      ? null
-                      : (v) => _setLinked('volume', v),
-                ),
+                if (!c.singleScreen)
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Sync volume'),
+                    value: volumeLinked,
+                    onChanged: locatorActive
+                        ? null
+                        : (v) => _setLinked('volume', v),
+                  ),
                 slider(
-                  'Top screen',
+                  c.singleScreen ? 'Screen' : 'Top screen',
                   'volume',
                   'top',
                   c.controlNumber('vt'),
-                  volumeLinked,
+                  volumeLinked && !c.singleScreen,
                   allowed:
                       !locatorActive &&
-                      (state.settingsAllowed || !volumeLinked),
+                      (state.settingsAllowed ||
+                          !volumeLinked ||
+                          c.singleScreen),
                 ),
-                slider(
-                  'Bottom screen',
-                  'volume',
-                  'bottom',
-                  c.controlNumber('vb'),
-                  volumeLinked,
-                  allowed: !locatorActive && state.settingsAllowed,
-                ),
+                if (!c.singleScreen)
+                  slider(
+                    'Bottom screen',
+                    'volume',
+                    'bottom',
+                    c.controlNumber('vb'),
+                    volumeLinked,
+                    allowed: !locatorActive && state.settingsAllowed,
+                  ),
                 if (locatorActive)
-                  const Text('Volume locked · Find my Thor is playing'),
+                  Text('Volume locked · ${c.findLabel} is playing'),
               ],
             ),
           ),
@@ -510,7 +521,7 @@ class _ControlsPageState extends State<ControlsPage> {
                   Text(
                     state.values['sleep_suspended'] == true
                         ? 'CPU keep-alive is paused'
-                        : 'Overnight saving uses trusted networks configured on the Thor.',
+                        : 'Overnight saving uses trusted networks configured on the device.',
                   ),
                   OutlinedButton.icon(
                     onPressed: enabled
@@ -538,7 +549,7 @@ class _ControlsPageState extends State<ControlsPage> {
                   ),
                   if (state.values['sleep_exact'] != true)
                     const Text(
-                      'Allow Alarms & reminders on the Thor to restore on time.',
+                      'Allow Alarms & reminders on the device to restore on time.',
                     ),
                 ],
               ),

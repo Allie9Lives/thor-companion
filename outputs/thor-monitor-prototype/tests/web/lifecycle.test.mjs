@@ -36,10 +36,10 @@ vm.runInContext(`renderPerformance({cpu_pct:24,cpu_window_ms:100,gpu_pct:null,ra
 for(const key of ['cpu','gpu','ram']){assert.equal(element(`${key}-bar`).hidden,true);assert.equal(element(key).textContent,'Unavailable');}
 console.log('Live usage bars and unavailable readings passed.');
 
-vm.runInContext(`renderHardware({device_name:"Named Thor",variant:'Max',storage_capacity_bytes:1000000000000,ufs_version:'4.0',cpu_name:'Snapdragon 8 Gen 2',gpu_name:'Adreno 740',build:'Thor firmware'})`,context);
-assert.equal(element('device-name').textContent,'Named Thor');assert.equal(element('device-model').textContent,'AYN Thor Max');assert.equal(element('device-capacity').textContent,'1 TB');assert.equal(element('device-ufs').textContent,'UFS 4.0');assert.equal(element('device-build').textContent,'Thor firmware');
-vm.runInContext(`renderHardware({model:'Thor',storage_capacity_bytes:null})`,context);
-assert.equal(element('device-model').textContent,'Thor');assert.equal(element('device-capacity').textContent,'Unavailable');assert.equal(element('device-ufs').textContent,'Unknown');
+vm.runInContext(`renderHardware({device_name:"Named device",variant:'Max',storage_capacity_bytes:1000000000000,ufs_version:'4.0',cpu_name:'Snapdragon 8 Gen 2',gpu_name:'Adreno 740',build:'Device firmware'})`,context);
+assert.equal(element('device-name').textContent,'Named device');assert.equal(element('device-model').textContent,'AYN Thor Max');assert.equal(element('device-capacity').textContent,'1 TB');assert.equal(element('device-ufs').textContent,'UFS 4.0');assert.equal(element('device-build').textContent,'Device firmware');
+vm.runInContext(`renderHardware({model:'Device',storage_capacity_bytes:null})`,context);
+assert.equal(element('device-model').textContent,'Device');assert.equal(element('device-capacity').textContent,'Unavailable');assert.equal(element('device-ufs').textContent,'Unknown');
 console.log('Hardware summary and unavailable configuration passed.');
 
 vm.runInContext(`renderStorage({free_bytes:25,sd_state:'read_only',sd_total_bytes:100,sd_free_bytes:50},{data_total_bytes:100,ufs_version:'4.0'})`,context);

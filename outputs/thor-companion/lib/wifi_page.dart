@@ -43,7 +43,7 @@ class _WifiPageState extends State<WifiPage> {
         setState(
           () => error = e is StateError
               ? e.message
-              : 'Could not complete Wi-Fi setup. Check Controls recovery on the Thor.',
+              : 'Could not complete Wi-Fi setup. Check Controls recovery on the device.',
         );
       }
     } finally {
@@ -59,7 +59,7 @@ class _WifiPageState extends State<WifiPage> {
   Future<void> connect(Map<String, dynamic> n) => action(() async {
     await c.joinSavedWifi((n['id'] as num).toInt());
     if (mounted) {
-      setState(() => message = 'Connection requested. Waiting for the Thor…');
+      setState(() => message = 'Connection requested. Waiting for the device…');
     }
     await Future<void>.delayed(const Duration(seconds: 3));
     await c.refreshWifi();
@@ -122,7 +122,7 @@ class _WifiPageState extends State<WifiPage> {
                   ),
                 const SizedBox(height: 12),
                 const Text(
-                  'The password is sent to the Thor over encrypted Bluetooth.',
+                  'The password is sent to the device over encrypted Bluetooth.',
                   style: TextStyle(fontSize: 14),
                 ),
               ],
@@ -164,7 +164,7 @@ class _WifiPageState extends State<WifiPage> {
           connected = state?['connected'] == true;
       return Scaffold(
         appBar: AppBar(
-          title: const Text('Thor Wi-Fi'),
+          title: const Text('Device Wi-Fi'),
           actions: [
             IconButton(
               onPressed: busy ? null : load,
@@ -225,17 +225,17 @@ class _WifiPageState extends State<WifiPage> {
                         await c.refreshWifi();
                       }),
                 icon: const Icon(Icons.wifi),
-                label: const Text('Turn on Thor Wi-Fi'),
+                label: const Text('Turn on the device Wi-Fi'),
               ),
             if (state?['captive'] == true) ...[
               const SizedBox(height: 12),
               FilledButton.icon(
                 onPressed: busy ? null : () => action(c.openWifiSignIn),
                 icon: const Icon(Icons.login),
-                label: const Text('Open sign-in on Thor'),
+                label: const Text('Open sign-in on the device'),
               ),
               const Text(
-                'Complete sign-in on the Thor. You can use the remote keyboard to help.',
+                'Complete sign-in on the device. You can use the remote keyboard to help.',
                 style: TextStyle(fontSize: 14),
               ),
             ],
@@ -258,7 +258,7 @@ class _WifiPageState extends State<WifiPage> {
                         : (v) => action(() => c.setFollowWifi(v)),
                   ),
                   const Text(
-                    'Only joins networks already saved on the Thor. Bluetooth must be connected. Passwords aren’t copied from your phone.',
+                    'Only joins networks already saved on the device. Bluetooth must be connected. Passwords aren’t copied from your phone.',
                     style: TextStyle(fontSize: 14),
                   ),
                   if (WifiFollowing.usesAutomation)
@@ -269,7 +269,7 @@ class _WifiPageState extends State<WifiPage> {
                         Padding(
                           padding: EdgeInsets.only(bottom: 12),
                           child: Text(
-                            'In Shortcuts → Automation, add a Wi-Fi “is joined” automation. Add Get Network Details (Wi-Fi → Network Name), then Follow Wi-Fi on Thor and pass the network name. Choose Run Immediately. Enable this switch for each Thor you want to follow. iPhone may need to be unlocked to open the app.',
+                            'In Shortcuts → Automation, add a Wi-Fi “is joined” automation. Add Get Network Details (Wi-Fi → Network Name), then Follow Wi-Fi on the device and pass the network name. Choose Run Immediately. Enable this switch for each device you want to follow. iPhone may need to be unlocked to open the app.',
                           ),
                         ),
                       ],
@@ -344,7 +344,7 @@ class _WifiPageState extends State<WifiPage> {
                                 builder: (ctx) => AlertDialog(
                                   title: const Text('Enterprise Wi-Fi'),
                                   content: const Text(
-                                    'Set up this network and its certificate in Android Settings on the Thor. Once saved, you can select it here.',
+                                    'Set up this network and its certificate in Android Settings on the device. Once saved, you can select it here.',
                                   ),
                                   actions: [
                                     TextButton(
@@ -360,7 +360,7 @@ class _WifiPageState extends State<WifiPage> {
             if (!c.bluetoothAvailable)
               notice(
                 'Bluetooth needed',
-                'Connect over Bluetooth before changing the Thor’s Wi-Fi.',
+                'Connect over Bluetooth before changing the device’s Wi-Fi.',
               ),
             if (busy) const LinearProgressIndicator(),
             if (message != null)

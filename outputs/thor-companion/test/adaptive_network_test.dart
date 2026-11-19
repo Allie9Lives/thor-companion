@@ -61,7 +61,7 @@ void main() {
         port: server.port,
         pin: p,
         token: 'a' * 64,
-        name: 'Thor',
+        name: 'Device',
       );
       final n = PinnedControlNetwork(connection(pin), '127.0.0.1');
       try {

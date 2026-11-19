@@ -70,7 +70,7 @@ void main() {
     ble = HistoryBle();
     ble.state.addAll({'history': true, 'power_control': true});
     c = CompanionController(transport: ble, rememberDevice: false);
-    await c.connect(const NearbyThor('thor', 'Thor', -50));
+    await c.connect(const NearbyThor('thor', 'Device', -50));
     ble.links.add(LinkState.connected);
     await Future<void>.delayed(const Duration(milliseconds: 25));
   });
@@ -164,7 +164,7 @@ void main() {
   ) async {
     c.dispose();
     c = CompanionController(transport: ble, rememberDevice: false);
-    await c.connect(const NearbyThor('thor', 'Thor', -50));
+    await c.connect(const NearbyThor('thor', 'Device', -50));
     ble.links.add(LinkState.connected);
     await tester.pump();
     await tester.pump();

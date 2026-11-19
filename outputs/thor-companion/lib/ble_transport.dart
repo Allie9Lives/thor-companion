@@ -26,7 +26,7 @@ enum LinkState { connecting, connected, disconnected }
 class StaleServiceCache extends StateError {
   StaleServiceCache()
     : super(
-        'Your iPhone’s saved Bluetooth pairing is out of date. Re-pair the Thor to continue.',
+        'Your iPhone’s saved Bluetooth pairing is out of date. Re-pair the device to continue.',
       );
 }
 
@@ -140,7 +140,11 @@ class ReactiveBleTransport
         scanMode: ScanMode.lowLatency,
       )
       .map(
-        (d) => NearbyThor(d.id, d.name.isEmpty ? 'AYN Thor' : d.name, d.rssi),
+        (d) => NearbyThor(
+          d.id,
+          d.name.isEmpty ? 'Thor Monitor device' : d.name,
+          d.rssi,
+        ),
       );
 
   @override
@@ -243,7 +247,7 @@ class ReactiveBleTransport
         throw StaleServiceCache();
       }
       throw StateError(
-        'The Thor’s monitoring service is unavailable. Restart monitoring on the Thor, then reconnect.',
+        'The device’s monitoring service is unavailable. Restart monitoring on the device, then reconnect.',
       );
     }
   }
