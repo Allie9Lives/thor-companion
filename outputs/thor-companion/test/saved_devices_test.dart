@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:thor_companion/device_switcher.dart';
 import 'package:thor_companion/saved_devices.dart';
 import 'package:thor_companion/telemetry.dart';
 
@@ -72,5 +74,32 @@ void main() {
     expect(cardSize(255858704384), '256 GB');
     expect(cardSize(1000204886016), '1 TB');
     expect(cardSize(100000000000), isNull);
+  });
+  testWidgets('device icons: Thor, Retroid outline, generic handheld', (
+    tester,
+  ) async {
+    Future<Widget> icon(SavedDevice d) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DeviceIcon(device: d, color: Colors.purple),
+        ),
+      );
+      return tester.widget(find.byType(DeviceIcon));
+    }
+
+    await icon(const SavedDevice('a', 'Thor', product: 'AYN Thor Max'));
+    expect(find.byIcon(Icons.splitscreen_outlined), findsOneWidget);
+    await icon(
+      const SavedDevice('b', 'R', product: 'Retroid Pocket Classic 6 GB'),
+    );
+    expect(
+      find.descendant(
+        of: find.byType(DeviceIcon),
+        matching: find.byType(CustomPaint),
+      ),
+      findsOneWidget,
+    );
+    await icon(const SavedDevice('c', 'X', product: 'Handheld Device'));
+    expect(find.byIcon(Icons.videogame_asset_outlined), findsOneWidget);
   });
 }

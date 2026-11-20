@@ -10,6 +10,7 @@ import android.system.OsConstants;
 import android.system.StructTimeval;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.json.JSONObject;
 
@@ -18,6 +19,8 @@ final class LiveStream {
     static final int MAX_STREAMS = 2;
     static final long MAX_MS = 30 * 60000L;
     private static final AtomicInteger helperStreams = new AtomicInteger();
+    // The stream per screen that a new request for that screen replaces (a phone restarting live view).
+    private static final Runnable[] owners = new Runnable[2];
 
     // ---- Helper side (shell UID 2000) ----
 
@@ -28,19 +31,31 @@ final class LiveStream {
         Os.setsockoptTimeval(fd, OsConstants.SOL_SOCKET, OsConstants.SO_SNDTIMEO, StructTimeval.fromMillis(0));
         Os.setsockoptTimeval(fd, OsConstants.SOL_SOCKET, OsConstants.SO_RCVTIMEO, StructTimeval.fromMillis(0));
         FileOutputStream out = new FileOutputStream(fd);
+        final java.lang.Process[] current = new java.lang.Process[1];
+        final boolean[] closed = new boolean[1];
+        final AtomicBoolean released = new AtomicBoolean();
+        final Runnable release = () -> { if (released.compareAndSet(false, true)) helperStreams.decrementAndGet(); };
+        // Stops this stream at once and frees its slot; its threads finish in the background.
+        final Runnable replace = () -> {
+            synchronized (current) { closed[0] = true; if (current[0] != null) current[0].destroy(); }
+            try { Os.shutdown(fd, OsConstants.SHUT_RDWR); } catch (Exception ignored) {}
+            release.run();
+        };
+        Runnable previous;
+        synchronized (owners) { previous = owners[screen]; owners[screen] = replace; }
+        if (previous != null) previous.run();
         String[] g;
         try {
             if (helperStreams.incrementAndGet() > MAX_STREAMS) throw new IllegalStateException("busy");
             g = ScreenRecording.geometry(screen, quality);
         } catch (Exception e) {
-            helperStreams.decrementAndGet();
+            release.run();
+            synchronized (owners) { if (owners[screen] == replace) owners[screen] = null; }
             try { out.write(0); } finally { out.close(); }
             return;
         }
         out.write(1);
         // A still screen sends nothing, so watch for the app hanging up instead of waiting for a failed write.
-        final java.lang.Process[] current = new java.lang.Process[1];
-        final boolean[] closed = new boolean[1];
         Thread watch = new Thread(() -> {
             try {
                 byte[] ignored = new byte[16];
@@ -107,7 +122,8 @@ final class LiveStream {
                 if (p != null) p.destroy();
                 try { Os.shutdown(fd, OsConstants.SHUT_RDWR); } catch (Exception ignored) {} // wakes the watcher
                 try { out.close(); } catch (IOException ignored) {}
-                helperStreams.decrementAndGet();
+                release.run();
+                synchronized (owners) { if (owners[screen] == replace) owners[screen] = null; }
             }
         }, "ThorLiveStream");
         t.setDaemon(true);

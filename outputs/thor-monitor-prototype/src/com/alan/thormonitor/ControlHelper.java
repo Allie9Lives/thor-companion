@@ -122,7 +122,7 @@ public final class ControlHelper {
                             write(key,command.equals("led")?(value==1?"1,1":"0,0"):String.valueOf(value));
                         }
                     } catch(Exception e) { error="Device system control failed"; }
-                    byte[] response=new JSONObject().put("ok",error.isEmpty()).put("error",error).put("capture",true).put("protocol",12).toString().getBytes(StandardCharsets.UTF_8);
+                    byte[] response=new JSONObject().put("ok",error.isEmpty()).put("error",error).put("capture",true).put("protocol",13).toString().getBytes(StandardCharsets.UTF_8);
                     DataOutputStream out=new DataOutputStream(socket.getOutputStream());out.writeShort(response.length);out.write(response);out.flush();
                 } catch(Exception ignored) { /* Invalid clients cannot terminate the helper. */ }
             }

@@ -77,12 +77,7 @@ class DeviceRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = AppPalette.of(context);
     return ListTile(
-      leading: Icon(
-        device.screens == 1
-            ? Icons.stay_current_portrait_outlined
-            : Icons.splitscreen_outlined,
-        color: p.accent,
-      ),
+      leading: DeviceIcon(device: device, color: p.accent),
       title: Text(device.name),
       subtitle: Text(
         [
@@ -108,4 +103,59 @@ class DeviceRow extends StatelessWidget {
       onTap: onTap,
     );
   }
+}
+
+/// Thor: two screens. Retroid Pocket Classic: a portrait handheld outline.
+/// Anything else: a generic handheld.
+class DeviceIcon extends StatelessWidget {
+  const DeviceIcon({super.key, required this.device, required this.color});
+  final SavedDevice device;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final product = device.product ?? '';
+    if (product.startsWith('Retroid Pocket Classic')) {
+      return SizedBox.square(
+        dimension: 24,
+        child: CustomPaint(painter: _PortraitHandheld(color)),
+      );
+    }
+    return Icon(
+      product.startsWith('AYN Thor') ||
+              (device.product == null && device.screens == 2)
+          ? Icons.splitscreen_outlined
+          : Icons.videogame_asset_outlined,
+      color: color,
+    );
+  }
+}
+
+/// Boxy outline of a vertical handheld: body, screen, d-pad and two buttons.
+class _PortraitHandheld extends CustomPainter {
+  const _PortraitHandheld(this.color);
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.width / 24;
+    final line = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.7 * s
+      ..strokeJoin = StrokeJoin.round;
+    final fill = Paint()..color = color;
+    // Body: square corners, boxy like the Retroid Pocket Classic.
+    canvas.drawRect(Rect.fromLTRB(5 * s, 2 * s, 19 * s, 22 * s), line);
+    canvas.drawRect(Rect.fromLTRB(8 * s, 5 * s, 16 * s, 11 * s), line);
+    // D-pad.
+    canvas.drawRect(Rect.fromLTRB(7.6 * s, 15.4 * s, 11.4 * s, 16.6 * s), fill);
+    canvas.drawRect(Rect.fromLTRB(8.9 * s, 14.1 * s, 10.1 * s, 17.9 * s), fill);
+    // A/B buttons.
+    canvas.drawCircle(Offset(15.6 * s, 15 * s), 1.1 * s, fill);
+    canvas.drawCircle(Offset(13.6 * s, 16.8 * s), 1.1 * s, fill);
+  }
+
+  @override
+  bool shouldRepaint(_PortraitHandheld old) => old.color != color;
 }

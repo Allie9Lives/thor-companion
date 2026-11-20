@@ -276,11 +276,12 @@ class CompanionController extends ChangeNotifier {
   int get screens => hardware?.screens ?? 2;
   bool get singleScreen => screens == 1;
 
-  /// "Find my Thor" / "Find my Retroid" / "Find my handheld".
+  /// "Find my Thor" / "Find my Odin" / "Find my Retroid" / "Find my handheld".
   String get findLabel =>
       'Find my ${switch (hardware?.product) {
         'Retroid Pocket Classic' => 'Retroid',
         'Handheld Device' => 'handheld',
+        final p? when p.startsWith('AYN Odin') => 'Odin',
         _ => 'Thor',
       }}';
   String get deviceDisplayName =>
@@ -1865,9 +1866,42 @@ class CompanionController extends ChangeNotifier {
     unawaited(refresh());
   }
 
+  Timer? _backgroundPoll;
+
+  /// Android keeps the app running in the background, so battery alerts can
+  /// also come over Wi-Fi/VPN when Bluetooth is out of range. iOS suspends the
+  /// app, so there alerts still need Bluetooth.
+  // shortcut: lives only while Android keeps the process; a foreground service if it gets killed.
+  void _setBackgroundPoll(bool on) {
+    _backgroundPoll?.cancel();
+    _backgroundPoll = null;
+    if (!on ||
+        isDemo ||
+        adaptive == null ||
+        defaultTargetPlatform != TargetPlatform.android) {
+      return;
+    }
+    _backgroundPoll = Timer.periodic(const Duration(seconds: 60), (_) async {
+      final device = (selected ?? remembered)?.id;
+      if (device == null ||
+          _foreground ||
+          adaptive!.bleConnected ||
+          !_wantsConnection ||
+          !batteryAlertOptions.enabled) {
+        return;
+      }
+      final bytes = await adaptive!.backgroundRead(statsId);
+      if (bytes == null || _foreground || _disposed) return;
+      try {
+        await _observeBattery(DeviceStats.fromBytes(bytes), device);
+      } catch (_) {}
+    });
+  }
+
   void setForeground(bool foreground) {
     _foreground = foreground;
     adaptive?.setForeground(foreground);
+    _setBackgroundPoll(!foreground);
     logBle('Thor app lifecycle: ${foreground ? "foreground" : "background"}');
     if (!foreground) {
       cancelScreenshot();
@@ -2629,6 +2663,7 @@ class CompanionController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _backgroundPoll?.cancel();
     adaptive?.removeListener(_notify);
     _disposed = true;
     _cancelRetry();

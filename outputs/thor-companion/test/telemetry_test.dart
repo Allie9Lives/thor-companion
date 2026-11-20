@@ -27,7 +27,7 @@ void main() {
       expect(legacy.displayModel, 'AYN Thor');
       expect(legacy.storageConfiguration, isNull);
       expect(
-        DeviceHardware.fromBytes(bytes({'variant': 'Ultra'})).variant,
+        DeviceHardware.fromBytes(bytes({'variant': 'Mega'})).variant,
         isNull,
       );
     },

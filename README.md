@@ -1,22 +1,30 @@
 <p align="center"><img src="docs/assets/header.svg" alt="Thor Companion — Your Thor, on your phone." width="100%"></p>
 
-Monitor and control your Android handheld (AYN Thor, Retroid Pocket Classic and others) from an iPhone or Android phone, or from a browser with Web Ops.
+Monitor and control your Android handheld (AYN Thor, AYN Odin, Retroid Pocket Classic and others) from an iPhone or Android phone, or from a browser with Web Ops.
 
 [Downloads](https://github.com/Allie9Lives/thor-companion/releases/latest) · [Setup](docs/setup.md) · [Report a bug](https://github.com/Allie9Lives/thor-companion/issues)
 
-## Download 0.18.0 — CORE multi-device update
+## Download 0.18.1 — hotfix
 
-Install **Thor Monitor** on each handheld and **Thor Companion** on your phone. Update both apps to **0.18.0**.
+Install **Thor Monitor** on each handheld and **Thor Companion** on your phone. Update both apps to **0.18.1**.
 
 | Device | Download |
 | --- | --- |
-| Handheld (AYN Thor, Retroid Pocket Classic, other Android handhelds) | [Thor Monitor APK](https://github.com/Allie9Lives/thor-companion/releases/download/v0.18.0/Thor-Monitor-0.18.0.apk) |
-| Android phone | [Thor Companion APK](https://github.com/Allie9Lives/thor-companion/releases/download/v0.18.0/Thor-Companion-Android-0.18.0.apk) |
-| iPhone | [Thor Companion IPA](https://github.com/Allie9Lives/thor-companion/releases/download/v0.18.0/Thor-Companion-iOS-0.18.0-development.ipa) |
+| Handheld (AYN Thor, AYN Odin, Retroid Pocket Classic, other Android handhelds) | [Thor Monitor APK](https://github.com/Allie9Lives/thor-companion/releases/download/v0.18.1/Thor-Monitor-0.18.1.apk) |
+| Android phone | [Thor Companion APK](https://github.com/Allie9Lives/thor-companion/releases/download/v0.18.1/Thor-Companion-Android-0.18.1.apk) |
+| iPhone | [Thor Companion IPA](https://github.com/Allie9Lives/thor-companion/releases/download/v0.18.1/Thor-Companion-iOS-0.18.1-development.ipa) |
 
 The IPA is a development build and needs valid signing or re-signing to install. Source ZIPs and checksums are in the [release](https://github.com/Allie9Lives/thor-companion/releases/latest).
 
-## New in 0.18.0
+## New in 0.18.1
+
+- **Live view fix:** reopening live view (rotating, returning to the app) no longer fails with "Could not reach the device over the network".
+- **AYN Odin:** Odin, Odin Lite, Odin 2, Odin 2 Mini, Odin 2 Portal and Odin 3 are recognized, including Base, Pro, Max and Ultra tiers. "Find my Odin" follows the device.
+- **Retroid controller style:** switch between Xbox and standard button layouts on the Retroid Pocket Classic.
+- **Alerts away from Bluetooth (Android phones):** while the app runs in the background, battery alerts also arrive over Wi-Fi or VPN.
+- **Web Ops device links:** save each handheld's Web Ops address and jump between them from Settings or the sign-in page.
+
+## New in 0.18.0 — CORE multi-device update
 
 - **Multiple handhelds:** pair a Thor, a Retroid Pocket Classic and more. Tap the device name to switch, add or forget devices. Each keeps its own Bluetooth and Wi-Fi/VPN details.
 - **Device detection:** AYN Thor and Retroid Pocket Classic (4 GB / 6 GB) are recognized, and any other Android handheld shows as *Handheld Device*. Controls a device doesn't have are hidden, and single-screen devices drop the top/bottom pickers.
@@ -51,7 +59,7 @@ Phone screenshots are rendered from the app's demo data by `test/readme_screens_
 ## Features
 
 - Battery, charging power, temperature, CPU/GPU/RAM, model, internal storage and microSD readings.
-- Brightness and volume (per screen on the Thor), fan and performance modes on AYN devices, remote typing, and device power options.
+- Brightness and volume (per screen on the Thor), fan and performance modes on AYN devices, controller layout on AYN and Retroid, remote typing, and device power options.
 - Live view with a virtual controller, screenshots and recordings of up to 10 minutes.
 - Battery history, runtime estimates, alerts, iPhone widgets and Live Activity.
 - Find my device with a loud alarm, fade-out and on-screen Stop button.

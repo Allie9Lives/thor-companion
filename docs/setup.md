@@ -1,6 +1,6 @@
 # Setup guide
 
-Install **Thor Monitor** on each handheld (AYN Thor, Retroid Pocket Classic or another Android handheld) and **Thor Companion** on your phone.
+Install **Thor Monitor** on each handheld (AYN Thor, AYN Odin, Retroid Pocket Classic or another Android handheld) and **Thor Companion** on your phone.
 
 ## 1. Set up your handheld
 
@@ -26,7 +26,7 @@ Continue through advanced controls and optional features, then **start monitorin
 2. Open Thor Companion and allow Bluetooth access.
 3. Find your device, tap **Connect**, and confirm pairing on both devices.
 
-<img src="assets/onboarding/step-6.png" alt="Connect your phone and confirm Bluetooth pairing" width="420">
+<img src="assets/onboarding/step-6.png" alt="Ready to connect: open Thor Companion and tap Connect" width="420">
 
 The app remembers the device and reconnects automatically. **Disconnect** pauses this until you tap **Reconnect**.
 
@@ -56,7 +56,7 @@ Thor Companion uses Wi-Fi or a VPN whenever the device answers, and falls back t
 2. Install a VPN such as **Tailscale** on both the handheld and the phone, and sign in to the same account. Keep it running on the handheld while you're home once, so the phone learns its VPN address. You can also enter the address under **gear → Connection health**.
 3. Away from home, open Thor Companion with the VPN on. It connects without Bluetooth.
 
-Bluetooth is still used for first pairing, changing the handheld's Wi-Fi, and background alerts.
+Bluetooth is still used for first pairing and changing the handheld's Wi-Fi. Background alerts need Bluetooth on iPhone; Android phones can also receive them over Wi-Fi/VPN while the app runs in the background.
 
 ## Optional features
 
@@ -69,7 +69,7 @@ Choose these during setup, or return to them in the host settings later.
 | Wi-Fi controls, files and screen capture | Turn on **Wi-Fi access** on the handheld and allow **Local Network** on iPhone. Follow the Bluetooth linking prompt, then choose which folders to share. Existing VPN settings are unchanged. |
 | Live view | Open **Controls → Live view**. Choose Top, Bottom or Both on a Thor, rotate for landscape, and turn on the virtual controller to play. |
 | Screen recording | Open **Controls → Screen capture → Video** on the phone. Record clips of up to 10 minutes, then **Stop & save**. iPhone also offers 30/60 FPS export. |
-| Web Ops | Turn on **Web Ops** in Thor Monitor and set an owner login. Open the address it shows in a browser on the same Wi-Fi or VPN. Use **Trust this device** once per computer so the browser can save your password. |
+| Web Ops | Turn on **Web Ops** in Thor Monitor and set an owner login. Open the address it shows in a browser on the same Wi-Fi or VPN. Use **Trust this device** once per computer so the browser can save your password. Add your other handhelds under **Settings → Your devices** to jump between them. |
 | FTP server | Start it from **Controls → FTP server** on the phone or **Files → Desktop file transfer** in Web Ops. Web Ops has copy buttons for each detail and **Download for WinSCP / FileZilla** (WinSCP: **Tools → Import Sites → FileZilla**). Use **explicit TLS** and passive mode. Turn on **Keep the same password** if you don't want a new password each time. |
 | App drawer | Tap a focused-screen box or **Open apps** in Controls. Open apps can be switched, moved or stopped. |
 | Phone keyboard | Open **Phone keyboard** in the host settings and follow the prompts. |

@@ -50,7 +50,7 @@ final class FileAccess {
   SSLContext tls=tlsContext(c);
   SSLServerSocket socket=(SSLServerSocket)tls.getServerSocketFactory().createServerSocket();socket.setReuseAddress(true);socket.bind(new InetSocketAddress(PORT));socket.setEnabledProtocols(new String[]{"TLSv1.2"});
   server=socket;
-  workers=new ThreadPoolExecutor(4,4,30,TimeUnit.SECONDS,new ArrayBlockingQueue<Runnable>(4),new ThreadPoolExecutor.AbortPolicy());
+  workers=new ThreadPoolExecutor(4,12,30,TimeUnit.SECONDS,new SynchronousQueue<Runnable>(),new ThreadPoolExecutor.AbortPolicy()); // live view holds 3 long requests and a restart briefly overlaps the old ones
   acceptor=Executors.newSingleThreadExecutor();acceptor.execute(()->{while(!socket.isClosed()){try{SSLSocket client=(SSLSocket)socket.accept();if(!allowedPeer(client.getInetAddress())){client.close();continue;}client.setSoTimeout(15000);active.add(client);try{workers.execute(()->serve(client));}catch(Exception e){active.remove(client);client.close();}}catch(Exception e){if(socket.isClosed())break;}}});
  }
  static synchronized SSLContext tlsContext(Context c)throws Exception{

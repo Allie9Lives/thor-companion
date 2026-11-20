@@ -125,3 +125,5 @@ body[data-screens="1"] .dual-only{display:none!important}
 body[data-screens="1"] .dual-screens{grid-template-columns:1fr}
 
 .ftp-details{display:grid;gap:8px;margin:8px 0 12px}.ftp-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.ftp-row>span{min-width:84px}.ftp-row code{flex:1 1 180px;overflow-wrap:anywhere;font-size:14px}
+
+.device-link{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)}.device-link a{color:var(--accent);font-weight:600}#device-add{display:flex;flex-direction:column;gap:8px;margin-top:16px}#device-add label{font-size:14px}.device-link span{display:flex;flex-direction:column;min-width:0}.device-link small{overflow-wrap:anywhere}.login-devices{margin-top:24px}

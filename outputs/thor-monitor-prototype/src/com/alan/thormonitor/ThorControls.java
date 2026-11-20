@@ -62,7 +62,7 @@ final class ThorControls {
         }catch(Exception e){return new JSONObject();}
     }
     boolean helperReady() { JSONObject status=helperStatus(context);return status.optBoolean("ok")&&status.optInt("protocol")>=9; }
-    static int outdatedHelperPid(Context c){JSONObject status=helperStatus(c);return status.optBoolean("ok")&&status.optInt("protocol")<12?status.optInt("peer_pid",0):0;}
+    static int outdatedHelperPid(Context c){JSONObject status=helperStatus(c);return status.optBoolean("ok")&&status.optInt("protocol")<13?status.optInt("peer_pid",0):0;}
     private boolean helper(String command,int value) {
         try { return helper(new JSONObject().put("set",command).put("value",value)); } catch(Exception e) { return false; }
     }
@@ -113,6 +113,8 @@ final class ThorControls {
     private static boolean vendorDisplay(){try{return Class.forName("android.os.ServiceManager").getDeclaredMethod("getService",String.class).invoke(null,"SettingsController")!=null;}catch(Exception e){return false;}}
     private boolean supportsHz(int hz){for(Display.Mode mode:context.getSystemService(DisplayManager.class).getDisplay(0).getSupportedModes())if(Math.abs(mode.getRefreshRate()-hz)<1)return true;return false;}
     private static void aynOnly(){if(!ayn())throw new IllegalArgumentException("Not available on this device");}
+    /** Retroid firmware shares AYN's controller-style settings (Xbox / standard / no gamepad layout); it has no fan on the Classic. */
+    private static boolean retroid(){return ThorModel.family(Build.MANUFACTURER,Build.MODEL).equals("retroid");}
     private int pct(int n,int max) { return Math.round(100f*n/max); }
     synchronized JSONObject snapshot() {
         JSONObject j=new JSONObject();
@@ -142,6 +144,7 @@ final class ThorControls {
                 String led=Settings.System.getString(resolver,"joystick_light_enabled");
                 j.put("led", "1,1".equals(led)?1:"0,0".equals(led)?0:-1);
             }
+            if(retroid()&&get("temp_abxy_layout_mode")>=0)j.put("style",get("temp_abxy_layout_mode"));
             if(ayn||get("vibrate_on")>=0)j.put("vibration",Settings.System.getInt(resolver,"vibrate_on",1));
             j.put("ack",lastId).put("error",lastError);
         } catch(Exception e) { try { j.put("error","Could not read controls"); } catch(Exception ignored) {} }
@@ -274,7 +277,7 @@ final class ThorControls {
                 case "focus": aynOnly(); range(value,0,2); put("focus",value); break;
                 case "bypass": aynOnly(); range(value,0,1); put("bypass",value); break;
                 case "vibration": range(value,0,1); put("vibration",value); break;
-                case "style": aynOnly();
+                case "style": if(!retroid())aynOnly();
                     range(value,0,2);
                     if(!helper("style",value)) throw new IllegalStateException("Check Automatic recovery setup in Thor Monitor");
                     break;

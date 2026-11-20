@@ -208,6 +208,7 @@ class DeviceHardware {
             'Base',
             'Pro',
             'Max',
+            'Ultra',
             '4 GB',
             '6 GB',
           }.contains(j['variant'])

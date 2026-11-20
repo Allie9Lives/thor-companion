@@ -1,4 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.alan.thormonitor" android:versionCode="60" android:versionName="0.18.0">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.alan.thormonitor" android:versionCode="61" android:versionName="0.18.1">
     <uses-sdk android:minSdkVersion="33" android:targetSdkVersion="33" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />

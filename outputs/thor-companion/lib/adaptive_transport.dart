@@ -688,6 +688,41 @@ class AdaptiveTransport extends ChangeNotifier
     }
   }
 
+  /// One stats read over the saved Wi-Fi/VPN path while the app is in the
+  /// background, for alerts away from Bluetooth. Null when nothing answers.
+  Future<List<int>?> backgroundRead(String characteristic) async {
+    final c = _credentials;
+    if (c == null || !automatic || sleeping || _disposed || foreground) {
+      return null;
+    }
+    final epoch = _epoch;
+    ControlNetwork? n;
+    try {
+      n = (await selectNetworkEndpoint<ControlNetwork>(
+        c,
+        cancelled: () => epoch != _epoch || _disposed || foreground,
+        probe: (host) async {
+          final client = networkFactory(c, host);
+          try {
+            await client.probe().timeout(const Duration(milliseconds: 2400));
+            return client;
+          } catch (_) {
+            client.close();
+            rethrow;
+          }
+        },
+        close: (client) => client.close(),
+      )).value;
+      return await n
+          .read(_kind(characteristic))
+          .timeout(const Duration(seconds: 10));
+    } catch (_) {
+      return null;
+    } finally {
+      n?.close();
+    }
+  }
+
   void _dropNetwork(String reason) {
     _network?.close();
     _network = null;

@@ -258,9 +258,14 @@ void main() {
         )['battery_pct'],
         70,
       );
+      expect(await link.backgroundRead(statsId), isNull); // foreground
       link.setForeground(false);
       await Future<void>.delayed(const Duration(milliseconds: 60));
       expect(states, isNot(contains(LinkState.disconnected)));
+      expect(
+        jsonDecode(utf8.decode((await link.backgroundRead(statsId))!))['seq'],
+        8,
+      );
       link.setForeground(true);
       await until(() => link.networkReady);
       host.reachable = false;
