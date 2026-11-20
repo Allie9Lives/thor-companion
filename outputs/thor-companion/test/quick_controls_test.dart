@@ -6,6 +6,7 @@ import 'package:thor_companion/control_symbol.dart';
 import 'package:thor_companion/control_symbol_paths.dart';
 import 'package:thor_companion/controls.dart';
 import 'package:thor_companion/companion_controller.dart';
+import 'package:thor_companion/main.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'dart:ui' as ui;
@@ -284,5 +285,46 @@ Future<void> main() async {
           .map((s) => s.name),
       ['vibration', 'clean'],
     );
+  });
+
+  testWidgets('Controls page shows only the controls the handheld reports', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(860, 1864);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final c = CompanionController.demo();
+    await tester.pumpWidget(ThorCompanionApp(controller: c));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Controls').last);
+    await tester.pumpAndSettle();
+    c.controls = ThorControlState.fromBytes(
+      utf8.encode(
+        jsonEncode({
+          'v': 1,
+          'settings': true,
+          'screens': 1,
+          'fan': 0,
+          'style': 1,
+          'vibration': 1,
+        }),
+      ),
+    );
+    c.notifyListeners();
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('quick-clean')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    for (final key in ['fan', 'style', 'vibration', 'clean']) {
+      expect(find.byKey(ValueKey('quick-$key')), findsOneWidget, reason: key);
+    }
+    for (final key in ['hz', 'performance', 'focus', 'bypass', 'led']) {
+      expect(find.byKey(ValueKey('quick-$key')), findsNothing, reason: key);
+    }
+    await tester.pumpWidget(const SizedBox());
+    c.dispose();
   });
 }

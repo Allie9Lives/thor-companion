@@ -115,6 +115,15 @@ final class ThorControls {
     private static void aynOnly(){if(!ayn())throw new IllegalArgumentException("Not available on this device");}
     /** Retroid firmware shares AYN's controller-style settings (Xbox / standard / no gamepad layout); it has no fan on the Classic. */
     private static boolean retroid(){return ThorModel.family(Build.MANUFACTURER,Build.MODEL).equals("retroid");}
+    /** Retroid Pocket Classic: RPSettings drives its fan (/sys/class/gpio5_pwm2) from fan_mode 0 off, 1 quiet, 4 smart, 5 sport, like AYN. */
+    private static boolean retroidFan(){return ThorModel.isRetroidClassic(Build.MODEL);}
+    /** Android 13+ system "Use vibration & haptics" switch (vibrate_on, unset = on). */
+    private boolean vibrationSwitch(){
+        if(ayn())return true;
+        if(Build.VERSION.SDK_INT<33)return false;
+        android.os.Vibrator v=context.getSystemService(android.os.Vibrator.class);
+        return v!=null&&v.hasVibrator();
+    }
     private int pct(int n,int max) { return Math.round(100f*n/max); }
     synchronized JSONObject snapshot() {
         JSONObject j=new JSONObject();
@@ -145,7 +154,8 @@ final class ThorControls {
                 j.put("led", "1,1".equals(led)?1:"0,0".equals(led)?0:-1);
             }
             if(retroid()&&get("temp_abxy_layout_mode")>=0)j.put("style",get("temp_abxy_layout_mode"));
-            if(ayn||get("vibrate_on")>=0)j.put("vibration",Settings.System.getInt(resolver,"vibrate_on",1));
+            if(retroidFan()&&get("fan_mode")>=0)j.put("fan",get("fan_mode"));
+            if(vibrationSwitch())j.put("vibration",Settings.System.getInt(resolver,"vibrate_on",1));
             j.put("ack",lastId).put("error",lastError);
         } catch(Exception e) { try { j.put("error","Could not read controls"); } catch(Exception ignored) {} }
         return j;
@@ -270,13 +280,13 @@ final class ThorControls {
                     if(!supportsHz(60)||!supportsHz(120)) throw new IllegalArgumentException("Refresh rate unsupported");
                     put("hz",value);
                     break;
-                case "fan": aynOnly();
+                case "fan": if(!retroidFan())aynOnly();
                     if(value!=0 && value!=1 && value!=4 && value!=5) throw new IllegalArgumentException("Unsupported fan mode");
                     put("fan",value); break;
                 case "performance": aynOnly(); range(value,0,2); put("performance",value); break;
                 case "focus": aynOnly(); range(value,0,2); put("focus",value); break;
                 case "bypass": aynOnly(); range(value,0,1); put("bypass",value); break;
-                case "vibration": range(value,0,1); put("vibration",value); break;
+                case "vibration": if(!vibrationSwitch())throw new IllegalArgumentException("Not available on this device"); range(value,0,1); put("vibration",value); break;
                 case "style": if(!retroid())aynOnly();
                     range(value,0,2);
                     if(!helper("style",value)) throw new IllegalStateException("Check Automatic recovery setup in Thor Monitor");

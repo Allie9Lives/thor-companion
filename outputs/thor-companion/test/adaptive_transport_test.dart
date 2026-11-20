@@ -266,8 +266,13 @@ void main() {
         jsonDecode(utf8.decode((await link.backgroundRead(statsId))!))['seq'],
         8,
       );
+      // A stale Bluetooth bond reported in the background keeps the session.
+      ble.links.addError(StateError('Peer removed pairing information'));
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(states, isNot(contains(LinkState.disconnected)));
       link.setForeground(true);
       await until(() => link.networkReady);
+      expect(link.networkStatus, contains('re-pairing'));
       host.reachable = false;
       await until(() => states.contains(LinkState.disconnected));
     },

@@ -113,6 +113,7 @@ void main() {
         product: 'Retroid Pocket Classic 6 GB',
         screens: 1,
       ),
+      SavedDevice('odin2', 'AYN Odin 2', product: 'AYN Odin 2 Max', screens: 1),
       SavedDevice(
         'odin',
         'Living room handheld',

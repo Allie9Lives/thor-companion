@@ -425,8 +425,10 @@ class _ControlsPageState extends State<ControlsPage> {
             child: QuickControls(
               values: {
                 ...state.values,
+                // Only controls this handheld reports; the rest stay hidden.
                 for (final setting in QuickControls.settings)
-                  setting.$2: c.controlNumber(setting.$2),
+                  if (state.values.containsKey(setting.$2))
+                    setting.$2: c.controlNumber(setting.$2),
               },
               enabled: enabled && state.settingsAllowed,
               onSet: (key, value) => unawaited(c.setControl(key, value)),

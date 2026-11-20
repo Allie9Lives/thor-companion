@@ -99,6 +99,15 @@ void main() {
       ),
       findsOneWidget,
     );
+    await icon(const SavedDevice('o', 'O', product: 'AYN Odin 2 Max'));
+    expect(
+      find.descendant(
+        of: find.byType(DeviceIcon),
+        matching: find.byType(CustomPaint),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.videogame_asset_outlined), findsNothing);
     await icon(const SavedDevice('c', 'X', product: 'Handheld Device'));
     expect(find.byIcon(Icons.videogame_asset_outlined), findsOneWidget);
   });

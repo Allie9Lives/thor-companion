@@ -4,17 +4,25 @@ Monitor and control your Android handheld (AYN Thor, AYN Odin, Retroid Pocket Cl
 
 [Downloads](https://github.com/Allie9Lives/thor-companion/releases/latest) · [Setup](docs/setup.md) · [Report a bug](https://github.com/Allie9Lives/thor-companion/issues)
 
-## Download 0.18.1 — hotfix
+## Download 0.18.2
 
-Install **Thor Monitor** on each handheld and **Thor Companion** on your phone. Update both apps to **0.18.1**.
+Install **Thor Monitor** on each handheld and **Thor Companion** on your phone. Update both apps to **0.18.2**.
 
 | Device | Download |
 | --- | --- |
-| Handheld (AYN Thor, AYN Odin, Retroid Pocket Classic, other Android handhelds) | [Thor Monitor APK](https://github.com/Allie9Lives/thor-companion/releases/download/v0.18.1/Thor-Monitor-0.18.1.apk) |
-| Android phone | [Thor Companion APK](https://github.com/Allie9Lives/thor-companion/releases/download/v0.18.1/Thor-Companion-Android-0.18.1.apk) |
-| iPhone | [Thor Companion IPA](https://github.com/Allie9Lives/thor-companion/releases/download/v0.18.1/Thor-Companion-iOS-0.18.1-development.ipa) |
+| Handheld (AYN Thor, AYN Odin, Retroid Pocket Classic, other Android handhelds) | [Thor Monitor APK](https://github.com/Allie9Lives/thor-companion/releases/download/v0.18.2/Thor-Monitor-0.18.2.apk) |
+| Android phone | [Thor Companion APK](https://github.com/Allie9Lives/thor-companion/releases/download/v0.18.2/Thor-Companion-Android-0.18.2.apk) |
+| iPhone | [Thor Companion IPA](https://github.com/Allie9Lives/thor-companion/releases/download/v0.18.2/Thor-Companion-iOS-0.18.2-development.ipa) |
 
 The IPA is a development build and needs valid signing or re-signing to install. Source ZIPs and checksums are in the [release](https://github.com/Allie9Lives/thor-companion/releases/latest).
+
+## New in 0.18.2
+
+- **Retroid Pocket Classic controls:** fan modes (Off, Quiet, Smart, Sport) and vibration on/off, alongside controller style.
+- **Only real controls:** the Controls page hides anything the connected handheld doesn't have, instead of showing it as unavailable.
+- **Vibration on more handhelds:** the system vibration switch works on any Android 13+ handheld with a vibrator.
+- **Steadier reconnects:** a stale Bluetooth pairing no longer drops a working Wi-Fi/VPN connection while the app is in the background, so you don't come back to Bluetooth and readings errors. Re-pair the handheld to fix Bluetooth itself.
+- **AYN Odin icon** in the device list.
 
 ## New in 0.18.1
 
@@ -45,7 +53,7 @@ Current interface with sample readings.
 
 <table>
 <tr><th>Overview</th><th>Your devices</th></tr>
-<tr><td><img src="docs/assets/client-overview.png" alt="Thor Companion overview with sample readings" width="280"></td><td><img src="docs/assets/client-devices.png" alt="Device switcher listing an AYN Thor, a Retroid Pocket Classic and another handheld" width="280"></td></tr>
+<tr><td><img src="docs/assets/client-overview.png" alt="Thor Companion overview with sample readings" width="280"></td><td><img src="docs/assets/client-devices.png" alt="Device switcher listing an AYN Thor, a Retroid Pocket Classic, an AYN Odin 2 and another handheld" width="280"></td></tr>
 <tr><th>Controls</th><th>Focused apps and storage</th></tr>
 <tr><td><img src="docs/assets/client-controls.png" alt="Controls with Find my, files, app drawer, FTP, Web Ops, keyboard, live view and screen capture" width="280"></td><td><img src="docs/assets/client-focused-apps.png" alt="Focused apps for both screens, internal storage type and microSD card size" width="280"></td></tr>
 <tr><th>Settings</th><th>Themes</th></tr>
@@ -59,7 +67,7 @@ Phone screenshots are rendered from the app's demo data by `test/readme_screens_
 ## Features
 
 - Battery, charging power, temperature, CPU/GPU/RAM, model, internal storage and microSD readings.
-- Brightness and volume (per screen on the Thor), fan and performance modes on AYN devices, controller layout on AYN and Retroid, remote typing, and device power options.
+- Brightness and volume (per screen on the Thor), fan and performance modes on AYN devices, controller layout on AYN and Retroid, fan modes on the Retroid Pocket Classic, remote typing, and device power options.
 - Live view with a virtual controller, screenshots and recordings of up to 10 minutes.
 - Battery history, runtime estimates, alerts, iPhone widgets and Live Activity.
 - Find my device with a loud alarm, fade-out and on-screen Stop button.

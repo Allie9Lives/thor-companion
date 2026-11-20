@@ -303,7 +303,11 @@ class AdaptiveTransport extends ChangeNotifier
               _serviceRecoveryBlocked = true;
               bleConnected = false;
               _discovered = false;
-              if (networkReady) {
+              // In the background network polling pauses, so a session already
+              // on a saved Wi-Fi/VPN path stays up; the next foreground tick
+              // re-verifies it instead of ending it with a re-pair error.
+              if (networkReady ||
+                  (!foreground && _logical && _credentials != null)) {
                 networkStatus =
                     'Network connected · Bluetooth needs re-pairing';
                 _connected();
@@ -674,9 +678,12 @@ class AdaptiveTransport extends ChangeNotifier
       networkHost = winner.host;
       old?.close();
       policy.network(winner.elapsed, DateTime.now());
+      final bluetooth = _serviceRecoveryBlocked
+          ? 'Bluetooth needs re-pairing'
+          : 'Bluetooth retained';
       networkStatus = isVpnAddress(winner.host)
-          ? 'VPN connected · Bluetooth retained'
-          : 'Local network connected · Bluetooth retained';
+          ? 'VPN connected · $bluetooth'
+          : 'Local network connected · $bluetooth';
     } catch (_) {
       if (_network == null && epoch == _epoch) {
         networkStatus = 'Network unavailable · Bluetooth retained';

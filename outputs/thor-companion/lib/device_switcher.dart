@@ -106,6 +106,7 @@ class DeviceRow extends StatelessWidget {
 }
 
 /// Thor: two screens. Retroid Pocket Classic: a portrait handheld outline.
+/// AYN Odin: a wide handheld with a centered screen and twin sticks.
 /// Anything else: a generic handheld.
 class DeviceIcon extends StatelessWidget {
   const DeviceIcon({super.key, required this.device, required this.color});
@@ -119,6 +120,12 @@ class DeviceIcon extends StatelessWidget {
       return SizedBox.square(
         dimension: 24,
         child: CustomPaint(painter: _PortraitHandheld(color)),
+      );
+    }
+    if (product.startsWith('AYN Odin')) {
+      return SizedBox.square(
+        dimension: 24,
+        child: CustomPaint(painter: _OdinHandheld(color)),
       );
     }
     return Icon(
@@ -158,4 +165,58 @@ class _PortraitHandheld extends CustomPainter {
 
   @override
   bool shouldRepaint(_PortraitHandheld old) => old.color != color;
+}
+
+/// Outline of an AYN Odin: wide body with rounded grips, centered screen,
+/// left stick over the d-pad and ABXY over the right stick.
+class _OdinHandheld extends CustomPainter {
+  const _OdinHandheld(this.color);
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.width / 24;
+    final line = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5 * s
+      ..strokeJoin = StrokeJoin.round;
+    final thin = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.1 * s;
+    final fill = Paint()..color = color;
+    canvas.drawRRect(
+      RRect.fromLTRBR(
+        0.8 * s,
+        5.5 * s,
+        23.2 * s,
+        18.5 * s,
+        Radius.circular(5 * s),
+      ),
+      line,
+    );
+    canvas.drawRect(Rect.fromLTRB(7.2 * s, 8.2 * s, 16.8 * s, 15.8 * s), line);
+    // Left stick over the d-pad.
+    canvas.drawCircle(Offset(4 * s, 9.6 * s), 1.4 * s, thin);
+    canvas.drawRect(Rect.fromLTRB(2.6 * s, 13.9 * s, 5.4 * s, 14.9 * s), fill);
+    canvas.drawRect(Rect.fromLTRB(3.5 * s, 13 * s, 4.5 * s, 15.8 * s), fill);
+    // ABXY over the right stick.
+    for (final o in const [
+      Offset(0, -1.3),
+      Offset(1.3, 0),
+      Offset(0, 1.3),
+      Offset(-1.3, 0),
+    ]) {
+      canvas.drawCircle(
+        Offset((20 + o.dx) * s, (9.6 + o.dy) * s),
+        0.6 * s,
+        fill,
+      );
+    }
+    canvas.drawCircle(Offset(20 * s, 14.4 * s), 1.4 * s, thin);
+  }
+
+  @override
+  bool shouldRepaint(_OdinHandheld old) => old.color != color;
 }
